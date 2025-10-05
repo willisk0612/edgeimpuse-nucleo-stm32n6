@@ -218,8 +218,12 @@ $(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
 # 	$($(quiet)LD) @$(BUILD_DIR)/$(TARGET).list $(LDFLAGS) -o $@
 # 	$($(quiet)SZ) $@
 
-$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS)
-	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
+# Create response file to avoid command line length limits
+$(BUILD_DIR)/objects.txt: $(OBJECTS)
+	$(file > $@, $(OBJECTS))
+
+$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) $(BUILD_DIR)/objects.txt
+	$(CC) @$(BUILD_DIR)/objects.txt $(LDFLAGS) -o $@
 	$(SZ) $@
 
 $(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
