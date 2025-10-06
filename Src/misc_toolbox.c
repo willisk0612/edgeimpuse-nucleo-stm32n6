@@ -75,53 +75,36 @@ static void fuse_hardware_conf(uint32_t bit_to_fuse)
 
 void set_clk_sleep_mode(void)
 {
-  /* Leave clocks enabled in Low Power modes */
-  // Low-power clock enable misc
-  __HAL_RCC_DBG_CLK_SLEEP_ENABLE();
-  __HAL_RCC_XSPIPHYCOMP_CLK_SLEEP_ENABLE();
-  
-  // Low-power clock enable for memories
-  __HAL_RCC_AXISRAM1_MEM_CLK_SLEEP_ENABLE();
-  __HAL_RCC_AXISRAM2_MEM_CLK_SLEEP_ENABLE();
-  __HAL_RCC_AXISRAM3_MEM_CLK_SLEEP_ENABLE();
-  __HAL_RCC_AXISRAM4_MEM_CLK_SLEEP_ENABLE();
-  __HAL_RCC_AXISRAM5_MEM_CLK_SLEEP_ENABLE();
-  __HAL_RCC_AXISRAM6_MEM_CLK_SLEEP_ENABLE();
-  __HAL_RCC_FLEXRAM_MEM_CLK_SLEEP_ENABLE();
-  __HAL_RCC_CACHEAXIRAM_MEM_CLK_SLEEP_ENABLE();
-  // LP clock AHB1: None
-  // LP clock AHB2: None
-  // LP clock AHB3
-  __HAL_RCC_RIFSC_CLK_SLEEP_ENABLE();
-  __HAL_RCC_RISAF_CLK_SLEEP_ENABLE();
-  __HAL_RCC_IAC_CLK_SLEEP_ENABLE();
-  // LP clock AHB4: None
-  // LP clocks AHB5
-  __HAL_RCC_XSPI1_CLK_SLEEP_ENABLE();
-  __HAL_RCC_XSPI2_CLK_SLEEP_ENABLE();
-  __HAL_RCC_CACHEAXI_CLK_SLEEP_ENABLE();
-  __HAL_RCC_NPU_CLK_SLEEP_ENABLE();
-  // LP clocks APB1: None
-  // LP clocks APB2
-  __HAL_RCC_USART1_CLK_SLEEP_ENABLE();
-  // LP clocks APB4: None
-  // LP clocks APB5: None
+  LL_BUS_EnableClockLowPower(~0);
+  LL_MEM_EnableClockLowPower(~0);
+  LL_AHB1_GRP1_EnableClockLowPower(~0);
+  LL_AHB2_GRP1_EnableClockLowPower(~0);
+  LL_AHB3_GRP1_EnableClockLowPower(~0);
+  LL_AHB4_GRP1_EnableClockLowPower(~0);
+  LL_AHB5_GRP1_EnableClockLowPower(~0);
+  LL_APB1_GRP1_EnableClockLowPower(~0);
+  LL_APB1_GRP2_EnableClockLowPower(~0);
+  LL_APB2_GRP1_EnableClockLowPower(~0);
+  LL_APB4_GRP1_EnableClockLowPower(~0);
+  LL_APB4_GRP2_EnableClockLowPower(~0);
+  LL_APB5_GRP1_EnableClockLowPower(~0);
+  LL_MISC_EnableClockLowPower(~0);
 }
 
 /* Change the VDDCORE level for overdrive modes
  * (Nucleo, legacy DK -before rev. C)
- * Using the I2c to control the Step-Down Converter 
+ * Using the I2c to control the Step-Down Converter
  *      This is mandatory / safer if an "overdrive" configuration is needed
  *      For the DK <rev.C /Nucleo, step-down converter = TPS62864
  *      Setting resistor = 56.2 kohm
- *              with 56.2kOhm: Output level: 0.80 V 
+ *              with 56.2kOhm: Output level: 0.80 V
  *              with 56.2kOhm: I2C device Address : 1001 001 = 0x49
  * (DK -after rev. C included)
  * Using the GPIO to control the step-down converter (for DK rev >= C)
  */
 void upscale_vddcore_level(void)
 {
-#if ((NUCLEO_N6_CONFIG == 0) && defined(STM32N6570_DK_REV) && (STM32N6570_DK_REV>=STM32N6570_DK_C01))      // Handle new DK boards with new SMPS controlled by GPIO  
+#if ((NUCLEO_N6_CONFIG == 0) && defined(STM32N6570_DK_REV) && (STM32N6570_DK_REV>=STM32N6570_DK_C01))      // Handle new DK boards with new SMPS controlled by GPIO
   BSP_SMPS_Init(SMPS_VOLTAGE_OVERDRIVE);
 #else   // Handle Nucleo boards or DK boards before rev.C
   uint8_t tmp;
@@ -129,7 +112,7 @@ void upscale_vddcore_level(void)
   BSP_I2C2_Init();
   // Address of the device on 7 bits: API requires the address to be switched left by 1
   // Write tmp on register 0x1 (Vout register 1), length=1
-  BSP_I2C2_WriteReg(0x49 << 1, 0x01, &tmp, 1);  
+  BSP_I2C2_WriteReg(0x49 << 1, 0x01, &tmp, 1);
 #endif
   HAL_Delay(1); /* Assuming Voltage Ramp Speed of 1mV/us --> 100mV increase takes 100us */
 }
@@ -141,7 +124,7 @@ void upscale_vddcore_level(void)
 void UART_Config(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  
+
   setvbuf(stdin, NULL, _IONBF, 0);
   setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -168,7 +151,7 @@ void UART_Config(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-  
+
   /* Peripheral config */
   UartHandle.Instance = USART1;
   UartHandle.Init.BaudRate = USE_UART_BAUDRATE;
@@ -214,7 +197,7 @@ void NPU_Config(void)
   __HAL_RCC_CACHEAXI_CLK_ENABLE();
   __HAL_RCC_CACHEAXI_FORCE_RESET();
   __HAL_RCC_CACHEAXI_RELEASE_RESET();
-  
+
   // __HAL_RCC_CACHEAXI_CLK_SLEEP_DISABLE();
   // __HAL_RCC_NPU_CLK_SLEEP_DISABLE();
   // __HAL_RCC_RAMCFG_CLK_SLEEP_DISABLE();
@@ -230,7 +213,7 @@ void NPU_Config(void)
   HAL_RAMCFG_EnableAXISRAM(&hramcfg);
 #endif
   npu_cache_init();
-  
+
 #ifdef USE_NPU_CACHE
    npu_cache_enable(); // Useless: already enabled by init
 #else
@@ -242,7 +225,7 @@ void NPU_Config(void)
   /* Enable Secure access for NPU */
   master_conf.MasterCID = RIF_CID_1;    // Master CID = 1
   master_conf.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV; // Priviledged secure
-  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_NPU, &master_conf);  
+  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_NPU, &master_conf);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_NPU, RIF_ATTRIBUTE_PRIV | RIF_ATTRIBUTE_SEC);
 #endif
 }
@@ -286,20 +269,20 @@ void set_vector_table_addr(void)
 
 
 void system_init_post(void)
-{  
+{
   __HAL_RCC_SYSCFG_CLK_ENABLE();
   __HAL_RCC_CRC_CLK_ENABLE();
-   
+
   /* Enable NPU RAMs (4x448KB) + CACHEAXI */
   RCC->MEMENR |= RCC_MEMENR_AXISRAM3EN | RCC_MEMENR_AXISRAM4EN | RCC_MEMENR_AXISRAM5EN | RCC_MEMENR_AXISRAM6EN;
   RCC->MEMENR |= RCC_MEMENR_CACHEAXIRAMEN; // RCC_MEMENR_NPUCACHERAMEN;
-  
+
   RAMCFG_SRAM2_AXI->CR &= ~RAMCFG_CR_SRAMSD;
   RAMCFG_SRAM3_AXI->CR &= ~RAMCFG_CR_SRAMSD;
   RAMCFG_SRAM4_AXI->CR &= ~RAMCFG_CR_SRAMSD;
   RAMCFG_SRAM5_AXI->CR &= ~RAMCFG_CR_SRAMSD;
   RAMCFG_SRAM6_AXI->CR &= ~RAMCFG_CR_SRAMSD;
-    
+
   /* Allow caches to be activated. Default value is 1, but the current boot sets it to 0 */
   MEMSYSCTL->MSCR |= MEMSYSCTL_MSCR_DCACTIVE_Msk | MEMSYSCTL_MSCR_ICACTIVE_Msk;
 }

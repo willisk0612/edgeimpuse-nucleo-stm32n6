@@ -44,10 +44,20 @@ int main(void)
 {
   set_vector_table_addr();
 
+  MEMSYSCTL->MSCR |= MEMSYSCTL_MSCR_ICACTIVE_Msk;
+  /* Set back system and CPU clock source to HSI */
+  __HAL_RCC_CPUCLK_CONFIG(RCC_CPUCLKSOURCE_HSI);
+  __HAL_RCC_SYSCLK_CONFIG(RCC_SYSCLKSOURCE_HSI);
   HAL_Init();
   system_init_post();
 
-  set_mcu_cache_state(USE_MCU_ICACHE, USE_MCU_DCACHE);
+  //set_mcu_cache_state(USE_MCU_ICACHE, USE_MCU_DCACHE);
+  SCB_EnableICache();
+  #if defined(USE_DCACHE)
+    /* Power on DCACHE */
+      MEMSYSCTL->MSCR |= MEMSYSCTL_MSCR_DCACTIVE_Msk;
+      SCB_EnableDCache();
+  #endif
 
   /* Configure the system clock */
 #if (NUCLEO_N6_CONFIG == 1)
@@ -59,7 +69,7 @@ int main(void)
   SystemClock_Config_HSI_no_overdrive();
 #endif
   /* Clear SLEEPDEEP bit of Cortex System Control Register */
-  CLEAR_BIT(SCB->SCR, SCB_SCR_SLEEPDEEP_Msk);
+  //CLEAR_BIT(SCB->SCR, SCB_SCR_SLEEPDEEP_Msk);
 
   UART_Config();
 
@@ -68,6 +78,8 @@ int main(void)
 #if defined(USE_NS_TIMER) && (USE_NS_TIMER == 1)
   timer_config_init();
 #endif
+
+  Fuse_Programming();
 
   init_external_memories();
 
@@ -111,11 +123,16 @@ static void init_external_memories(void)
   Flash.InterfaceMode = BSP_XSPI_NOR_OPI_MODE;
   Flash.TransferRate = BSP_XSPI_NOR_DTR_TRANSFER;
 
+  //uint8_t id[3];
+  //BSP_XSPI_NOR_ReadID(0, id);
   if (BSP_XSPI_NOR_Init(0, &Flash) != BSP_ERROR_NONE)
   {
     __BKPT(0);
   }
-  BSP_XSPI_NOR_EnableMemoryMappedMode(0);
+  if(BSP_XSPI_NOR_EnableMemoryMappedMode(0) != BSP_ERROR_NONE)
+  {
+        __BKPT(0);
+  }
 #endif
 }
 
