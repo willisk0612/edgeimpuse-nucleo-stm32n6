@@ -36,50 +36,13 @@
 #define EI_POSTPROCESSING_COMMON_H
 
 #include "model-parameters/model_metadata.h"
+#include "edge-impulse-sdk/classifier/postprocessing/ei_postprocessing_types.h"
+#include "edge-impulse-sdk/classifier/postprocessing/ei_postprocessing_ai_hub.h"
 #include "edge-impulse-sdk/classifier/ei_model_types.h"
 #include "edge-impulse-sdk/classifier/ei_classifier_types.h"
 #include "edge-impulse-sdk/classifier/ei_nms.h"
 #include "edge-impulse-sdk/dsp/ei_vector.h"
 #include <string>
-
-#ifndef EI_HAS_OBJECT_DETECTION
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_SSD)
-    #define EI_HAS_SSD 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_FOMO)
-    #define EI_HAS_FOMO 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_YOLOV5) || (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_YOLOV5_V5_DRPAI)
-    #define EI_HAS_YOLOV5 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_YOLOX)
-    #define EI_HAS_YOLOX 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_YOLOV7)
-    #define EI_HAS_YOLOV7 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_TAO_RETINANET) || (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_TAO_SSD)
-    #define EI_HAS_TAO_DECODE_DETECTIONS 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_TAO_YOLOV3) || (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_TAO_YOLOV4)
-    #define EI_HAS_TAO_YOLO 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_TAO_YOLOV3)
-    #define EI_HAS_TAO_YOLOV3 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_TAO_YOLOV4)
-    #define EI_HAS_TAO_YOLOV4 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_YOLOV2)
-    #define EI_HAS_YOLOV2 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_YOLO_PRO)
-    #define EI_HAS_YOLO_PRO 1
-    #endif
-    #if (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_YOLOV11) || (EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER == EI_CLASSIFIER_LAST_LAYER_YOLOV11_ABS)
-    #define EI_HAS_YOLOV11 1
-    #endif
-#endif
 
 int16_t get_block_number(ei_impulse_handle_t *handle, void *init_func)
 {
@@ -90,64 +53,6 @@ int16_t get_block_number(ei_impulse_handle_t *handle, void *init_func)
     }
     return -1;
 }
-
-typedef struct cube {
-    uint32_t x;
-    uint32_t y;
-    uint32_t width;
-    uint32_t height;
-    float confidence;
-    const char *label;
-} ei_classifier_cube_t;
-
-typedef struct {
-    float threshold;
-} ei_fill_result_object_detection_threshold_config_t;
-
-typedef struct {
-    float threshold;
-    uint8_t version;
-    uint32_t object_detection_count;
-    uint32_t output_features_count;
-    ei_object_detection_nms_config_t nms_config;
-} ei_fill_result_object_detection_f32_config_t;
-
-typedef struct {
-    float threshold;
-    uint8_t version;
-    uint32_t object_detection_count;
-    uint32_t output_features_count;
-    float zero_point;
-    float scale;
-    ei_object_detection_nms_config_t nms_config;
-} ei_fill_result_object_detection_i8_config_t;
-
-typedef struct {
-    float zero_point;
-    float scale;
-} ei_fill_result_classification_i8_config_t;
-
-typedef struct {
-    float threshold;
-    uint16_t out_width;
-    uint16_t out_height;
-    uint32_t object_detection_count;
-} ei_fill_result_fomo_f32_config_t;
-
-typedef struct {
-    float threshold;
-    uint16_t out_width;
-    uint16_t out_height;
-    uint32_t object_detection_count;
-    float zero_point;
-    float scale;
-} ei_fill_result_fomo_i8_config_t;
-
-typedef struct {
-    float threshold;
-    uint16_t grid_size_x;
-    uint16_t grid_size_y;
-} ei_fill_result_visual_ad_f32_config_t;
 
 /**
  * Checks whether a new section overlaps with a cube,
@@ -280,11 +185,11 @@ __attribute__((unused)) static void process_cubes(ei_impulse_result_t *result, s
  * Fill the result structure from an unquantized output tensor
  */
 EI_IMPULSE_ERROR process_classification_f32(ei_impulse_handle_t *handle,
-                                uint32_t block_index,
-                                uint32_t input_block_id,
-                                ei_impulse_result_t *result,
-                                void *config_ptr,
-                                void *state)
+                                            uint32_t block_index,
+                                            uint32_t input_block_id,
+                                            ei_impulse_result_t *result,
+                                            void *config_ptr,
+                                            void *state)
 {
     const ei_impulse_t *impulse = handle->impulse;
 
@@ -295,9 +200,9 @@ EI_IMPULSE_ERROR process_classification_f32(ei_impulse_handle_t *handle,
 #endif
 
     ei::matrix_t* raw_output_mtx = NULL;
-    bool status = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
-    if (!status) {
-        return EI_IMPULSE_POSTPROCESSING_ERROR;
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
     }
 
     for (uint32_t ix = 0; ix < stop_count; ix++) {
@@ -323,16 +228,19 @@ EI_IMPULSE_ERROR process_classification_f32(ei_impulse_handle_t *handle,
  * Fill the result structure from a quantized output tensor
  */
 __attribute__((unused)) static EI_IMPULSE_ERROR process_classification_i8(ei_impulse_handle_t *handle,
-                                                                    uint32_t block_index,
-                                                                    uint32_t input_block_id,
-                                                                    ei_impulse_result_t *result,
-                                                                    void *config_ptr,
-                                                                    void *state) {
+                                                                          uint32_t block_index,
+                                                                          uint32_t input_block_id,
+                                                                          ei_impulse_result_t *result,
+                                                                          void *config_ptr,
+                                                                          void *state) {
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_classification_i8_config_t *config = (ei_fill_result_classification_i8_config_t*)config_ptr;
 
     ei::matrix_i8_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     for (uint32_t ix = 0; ix < impulse->label_count; ix++) {
         float value = static_cast<float>(raw_output_mtx->buffer[ix] - config->zero_point) * config->scale;
@@ -342,12 +250,9 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_classification_i8(ei_imp
         ei_printf_float(value);
         ei_printf("\n");
 #endif
-
         result->classification[ix].label = impulse->categories[ix];
         result->classification[ix].value = value;
     }
-
-
 
     return EI_IMPULSE_OK;
 }
@@ -366,7 +271,10 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_classification_u8(ei_imp
 
     // legacy unsigned quantized output
     ei::matrix_u8_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     for (uint32_t ix = 0; ix < impulse->label_count; ix++) {
         float value = static_cast<float>(raw_output_mtx->buffer[ix] - config->zero_point) * config->scale;
@@ -384,6 +292,126 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_classification_u8(ei_imp
     return EI_IMPULSE_OK;
 }
 
+#if EI_CLASSIFIER_FREEFORM_OUTPUT == 1
+/**
+ * Fill the result structure from an unquantized output tensor
+ */
+EI_IMPULSE_ERROR process_freeform_f32(ei_impulse_handle_t *handle,
+                                      uint32_t block_index,
+                                      uint32_t input_block_id,
+                                      ei_impulse_result_t *result,
+                                      void *config_ptr,
+                                      void *state)
+{
+    const ei_impulse_t *impulse = handle->impulse;
+
+    if (handle->freeform_outputs == NULL) {
+        EI_LOGE("ERR: handle->freeform_outputs is NULL. You'll need to call ei_set_freeform_output before running your impulse.\n");
+        return EI_IMPULSE_FREEFORM_OUTPUT_NULL;
+    }
+
+    for (size_t ix = 0; ix < impulse->freeform_outputs_size; ix++) {
+        ei::matrix_t* raw_output_mtx = NULL;
+        bool status = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id + ix, impulse->output_tensors_size);
+        if (!status) {
+            return EI_IMPULSE_POSTPROCESSING_ERROR;
+        }
+
+        matrix_t& freeform_output = handle->freeform_outputs[ix];
+        // Should not be possible, we've validated the matrices in ei_set_freeform_output, so don't add another EI_LOGE here
+        // to save flash.
+        if (freeform_output.rows * freeform_output.cols != raw_output_mtx->rows * raw_output_mtx->cols) {
+            return EI_IMPULSE_FREEFORM_OUTPUT_SIZE_MISMATCH;
+        }
+
+        memcpy(freeform_output.buffer, raw_output_mtx->buffer, raw_output_mtx->rows * raw_output_mtx->cols * sizeof(float));
+    }
+
+    return EI_IMPULSE_OK;
+}
+
+/**
+ * Fill the result structure from a quantized output tensor
+ */
+__attribute__((unused)) static EI_IMPULSE_ERROR process_freeform_i8(ei_impulse_handle_t *handle,
+                                                                    uint32_t block_index,
+                                                                    uint32_t input_block_id,
+                                                                    ei_impulse_result_t *result,
+                                                                    void *config_ptr,
+                                                                    void *state) {
+    const ei_impulse_t *impulse = handle->impulse;
+    const ei_fill_result_classification_i8_config_t *config = (ei_fill_result_classification_i8_config_t*)config_ptr;
+
+    if (handle->freeform_outputs == NULL) {
+        EI_LOGE("ERR: handle->freeform_outputs is NULL. You'll need to call ei_set_freeform_output before running your impulse.\n");
+        return EI_IMPULSE_FREEFORM_OUTPUT_NULL;
+    }
+
+    for (size_t ix = 0; ix < impulse->freeform_outputs_size; ix++) {
+        ei::matrix_i8_t* raw_output_mtx = NULL;
+        bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id + ix, impulse->output_tensors_size);
+        if (!find_mtx_res) {
+            return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+        }
+
+        matrix_t& freeform_output = handle->freeform_outputs[ix];
+        if (freeform_output.rows * freeform_output.cols != raw_output_mtx->rows * raw_output_mtx->cols) {
+            // Should not be possible, we've validated the matrices in ei_set_freeform_output, so don't add another EI_LOGE here
+            // to save flash.
+            return EI_IMPULSE_FREEFORM_OUTPUT_SIZE_MISMATCH;
+        }
+
+        for (uint32_t ix = 0; ix < freeform_output.rows * freeform_output.cols; ix++) {
+            float value = static_cast<float>(raw_output_mtx->buffer[ix] - config->zero_point) * config->scale;
+            freeform_output.buffer[ix] = value;
+        }
+    }
+
+    return EI_IMPULSE_OK;
+}
+
+/**
+ * Fill the result structure from a quantized output tensor
+ */
+__attribute__((unused)) static EI_IMPULSE_ERROR process_freeform_u8(ei_impulse_handle_t *handle,
+                                                                    uint32_t block_index,
+                                                                    uint32_t input_block_id,
+                                                                    ei_impulse_result_t *result,
+                                                                    void *config_ptr,
+                                                                    void *state) {
+
+    const ei_impulse_t *impulse = handle->impulse;
+    const ei_fill_result_classification_i8_config_t *config = (ei_fill_result_classification_i8_config_t*)config_ptr;
+
+    if (handle->freeform_outputs == NULL) {
+        EI_LOGE("ERR: handle->freeform_outputs is NULL. You'll need to call ei_set_freeform_output before running your impulse.\n");
+        return EI_IMPULSE_FREEFORM_OUTPUT_NULL;
+    }
+
+    for (size_t ix = 0; ix < impulse->freeform_outputs_size; ix++) {
+        ei::matrix_u8_t* raw_output_mtx = NULL;
+        bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id + ix, impulse->output_tensors_size);
+        if (!find_mtx_res) {
+            return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+        }
+
+        matrix_t& freeform_output = handle->freeform_outputs[ix];
+        if (freeform_output.rows * freeform_output.cols != raw_output_mtx->rows * raw_output_mtx->cols) {
+            // Should not be possible, we've validated the matrices in ei_set_freeform_output, so don't add another EI_LOGE here
+            // to save flash.
+            return EI_IMPULSE_FREEFORM_OUTPUT_SIZE_MISMATCH;
+        }
+
+        for (uint32_t ix = 0; ix < freeform_output.rows * freeform_output.cols; ix++) {
+            float value = static_cast<float>(raw_output_mtx->buffer[ix] - config->zero_point) * config->scale;
+            freeform_output.buffer[ix] = value;
+        }
+    }
+
+    return EI_IMPULSE_OK;
+}
+#endif // #if EI_CLASSIFIER_FREEFORM_OUTPUT == 1
+
 /**
  * Fill the result structure from a quantized output tensor
  */
@@ -396,9 +424,9 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_anomaly(ei_impulse_handl
     const ei_impulse_t *impulse = handle->impulse;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    bool status = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
-    if (!status) {
-        return EI_IMPULSE_POSTPROCESSING_ERROR;
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
     }
 
     result->anomaly = raw_output_mtx->buffer[0];
@@ -412,7 +440,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_fomo_f32(ei_impulse_hand
                                                                     ei_impulse_result_t *result,
                                                                     void *config_ptr,
                                                                     void *state) {
-#ifdef EI_HAS_FOMO
+#if EI_HAS_FOMO
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_fomo_f32_config_t *config = (ei_fill_result_fomo_f32_config_t*)config_ptr;
 
@@ -421,13 +449,16 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_fomo_f32(ei_impulse_hand
     int out_width_factor = impulse->input_width / config->out_width;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     for (size_t y = 0; y < config->out_width; y++) {
         for (size_t x = 0; x < config->out_height; x++) {
             size_t loc = ((y * config->out_height) + x) * (impulse->label_count + 1);
 
-            for (size_t ix = 1; ix < impulse->label_count + 1; ix++) {
+            for (size_t ix = 1; ix < (size_t)impulse->label_count + 1; ix++) {
                 float vf = raw_output_mtx->buffer[loc+ix];
 
                 ei_handle_cube(&cubes, x, y, vf, impulse->categories[ix - 1], config->threshold);
@@ -449,7 +480,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_fomo_i8(ei_impulse_handl
                                                                     ei_impulse_result_t *result,
                                                                     void *config_ptr,
                                                                     void *state) {
-#ifdef EI_HAS_FOMO
+#if EI_HAS_FOMO
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_fomo_i8_config_t *config = (ei_fill_result_fomo_i8_config_t*)config_ptr;
 
@@ -458,13 +489,16 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_fomo_i8(ei_impulse_handl
     int out_width_factor = impulse->input_width / config->out_width;
 
     ei::matrix_i8_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     for (size_t y = 0; y < config->out_width; y++) {
         for (size_t x = 0; x < config->out_height; x++) {
             size_t loc = ((y * config->out_height) + x) * (impulse->label_count + 1);
 
-            for (size_t ix = 1; ix < impulse->label_count + 1; ix++) {
+            for (size_t ix = 1; ix < (size_t)impulse->label_count + 1; ix++) {
                 int8_t v = raw_output_mtx->buffer[loc+ix];
                 float vf = static_cast<float>(v - config->zero_point) * config->scale;
 
@@ -498,7 +532,10 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_visual_ad_f32(ei_impulse
     float sum_val = 0;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     for (uint32_t ix = 0; ix < config->grid_size_x * config->grid_size_y; ix++) {
         float value = raw_output_mtx->buffer[ix];
@@ -549,7 +586,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_ssd_f32(ei_impulse_handl
                                                                              ei_impulse_result_t *result,
                                                                              void *config_ptr,
                                                                              void *state) {
-#ifdef EI_HAS_SSD
+#if EI_HAS_SSD
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
@@ -562,9 +599,9 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_ssd_f32(ei_impulse_handl
     ei::matrix_t* scores_mtx = NULL;
     ei::matrix_t* labels_mtx = NULL;
 
-    find_mtx_by_idx(result->_raw_outputs, &data_mtx, input_block_id + 1, impulse->learning_blocks_size + 3);
-    find_mtx_by_idx(result->_raw_outputs, &scores_mtx, input_block_id + 0, impulse->learning_blocks_size + 3);
-    find_mtx_by_idx(result->_raw_outputs, &labels_mtx, input_block_id + 3, impulse->learning_blocks_size + 3);
+    find_mtx_by_idx(result->_raw_outputs, &data_mtx, input_block_id + 1, impulse->output_tensors_size);
+    find_mtx_by_idx(result->_raw_outputs, &scores_mtx, input_block_id + 0, impulse->output_tensors_size);
+    find_mtx_by_idx(result->_raw_outputs, &labels_mtx, input_block_id + 3, impulse->output_tensors_size);
 
     for (size_t ix = 0; ix < config->object_detection_count; ix++) {
         float score = scores_mtx->buffer[ix];
@@ -615,14 +652,14 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov5_f32(ei_impulse_ha
                                                                     ei_impulse_result_t *result,
                                                                     void *config_ptr,
                                                                     void *state) {
-#ifdef EI_HAS_YOLOV5
+#if EI_HAS_YOLOV5
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    bool status = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
-    if (!status) {
-        return EI_IMPULSE_POSTPROCESSING_ERROR;
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
     }
 
     static std::vector<ei_impulse_result_bounding_box_t> results;
@@ -718,13 +755,16 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov5_i8(ei_impulse_han
                                                                     ei_impulse_result_t *result,
                                                                     void *config_ptr,
                                                                     void *state) {
-#ifdef EI_HAS_YOLOV5
+#if EI_HAS_YOLOV5
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_i8_config_t *config = (ei_fill_result_object_detection_i8_config_t*)config_ptr;
 
     // yolov5 is the only exception that uses legacy unsigned quantized output
     ei::matrix_u8_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     static std::vector<ei_impulse_result_bounding_box_t> results;
     results.clear();
@@ -819,12 +859,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolox_f32(ei_impulse_han
                                                                              ei_impulse_result_t *result,
                                                                              void *config_ptr,
                                                                              void *state) {
-#ifdef EI_HAS_YOLOX
+#if EI_HAS_YOLOX
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     static std::vector<ei_impulse_result_bounding_box_t> results;
     results.clear();
@@ -1031,12 +1074,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolox_detect_f32(ei_impu
                                                                              ei_impulse_result_t *result,
                                                                              void *config_ptr,
                                                                              void *state) {
-#ifdef EI_HAS_YOLOX
+#if EI_HAS_YOLOX
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     static std::vector<ei_impulse_result_bounding_box_t> results;
     results.clear();
@@ -1104,12 +1150,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov7_f32(ei_impulse_ha
                                                                              ei_impulse_result_t *result,
                                                                              void *config_ptr,
                                                                              void *state) {
-#ifdef EI_HAS_YOLOV7
+#if EI_HAS_YOLOV7
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     static std::vector<ei_impulse_result_bounding_box_t> results;
     results.clear();
@@ -1158,14 +1207,14 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov7_f32(ei_impulse_ha
     return EI_IMPULSE_OK;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_YOLOV7
+#endif // #if EI_HAS_YOLOV7
 }
 
 __attribute__((unused)) inline float sigmoid(float a) {
     return 1.0f / (1.0f + exp(-a));
 }
 
-#ifdef EI_HAS_YOLOV2
+#if EI_HAS_YOLOV2
 // based on akida_models-1.2.0/detection/processing.py
 // input is "2D" array with shape [grid_h * grid_w * nb_box, nb_classes]
 __attribute__((unused)) static void softmax(std::vector<float>& input, const size_t nb_classes)
@@ -1257,12 +1306,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov2_f32(ei_impulse_ha
                                                                              ei_impulse_result_t *result,
                                                                              void *config_ptr,
                                                                              void *state) {
-#ifdef EI_HAS_YOLOV2
+#if EI_HAS_YOLOV2
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     static std::vector<ei_impulse_result_bounding_box_t> results;
     results.clear();
@@ -1422,44 +1474,10 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov2_f32(ei_impulse_ha
     return EI_IMPULSE_OK;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_YOLOV2
+#endif // #if EI_HAS_YOLOV2
 }
 
-#if (EI_HAS_TAO_DECODE_DETECTIONS == 1) || (EI_HAS_TAO_YOLO == 1) || (EI_HAS_YOLO_PRO == 1) || (EI_HAS_YOLOV11 == 1)
-
-__attribute__((unused)) static void prepare_nms_results_common(size_t object_detection_count,
-                                                               ei_impulse_result_t *result,
-                                                               std::vector<ei_impulse_result_bounding_box_t> *results) {
-    #define EI_CLASSIFIER_OBJECT_DETECTION_KEEP_TOPK 200
-
-    // if we didn't detect min required objects, fill the rest with fixed value
-    size_t added_boxes_count = results->size();
-    if (added_boxes_count < object_detection_count) {
-        results->resize(object_detection_count);
-        for (size_t ix = added_boxes_count; ix < object_detection_count; ix++) {
-            (*results)[ix].value = 0.0f;
-        }
-    }
-
-    // we sort in reverse order across all classes,
-    // since results for each class are pushed to the end.
-    std::sort(results->begin(), results->end(), [ ]( const ei_impulse_result_bounding_box_t& lhs, const ei_impulse_result_bounding_box_t& rhs )
-    {
-        return lhs.value > rhs.value;
-    });
-
-    // keep topK
-    if (results->size() > EI_CLASSIFIER_OBJECT_DETECTION_KEEP_TOPK) {
-        results->erase(results->begin() + EI_CLASSIFIER_OBJECT_DETECTION_KEEP_TOPK, results->end());
-    }
-
-    result->bounding_boxes = results->data();
-    result->bounding_boxes_count = added_boxes_count;
-}
-
-#endif
-
-#ifdef EI_HAS_TAO_DECODE_DETECTIONS
+#if EI_HAS_TAO_DECODE_DETECTIONS
 template<typename T>
 __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_decode_detections_common(const ei_impulse_t *impulse,
                                                                                      ei_impulse_result_t *result,
@@ -1590,9 +1608,9 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_decode_detections_co
 
     return EI_IMPULSE_OK;
 }
-#endif // #ifdef EI_HAS_TAO_DETECT_DETECTIONS
+#endif // #if EI_HAS_TAO_DETECT_DETECTIONS
 
-#ifdef EI_HAS_TAO_YOLOV3
+#if EI_HAS_TAO_YOLOV3
 template<typename T>
 __attribute__((unused)) static EI_IMPULSE_ERROR  process_tao_yolov3_common(const ei_impulse_t *impulse,
                                                                                      ei_impulse_result_t *result,
@@ -1685,9 +1703,9 @@ __attribute__((unused)) static EI_IMPULSE_ERROR  process_tao_yolov3_common(const
     prepare_nms_results_common(object_detection_count, result, &results);
     return EI_IMPULSE_OK;
 }
-#endif // #ifdef EI_HAS_TAO_YOLOV3
+#endif // #if EI_HAS_TAO_YOLOV3
 
-#ifdef EI_HAS_TAO_YOLOV4
+#if EI_HAS_TAO_YOLOV4
 template<typename T>
 __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov4_common(const ei_impulse_t *impulse,
                                                                           ei_impulse_result_t *result,
@@ -1792,7 +1810,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov4_common(const 
     prepare_nms_results_common(object_detection_count, result, &results);
     return EI_IMPULSE_OK;
 }
-#endif // #ifdef EI_HAS_TAO_YOLOV4
+#endif // #if EI_HAS_TAO_YOLOV4
 
 __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_detection_i8(ei_impulse_handle_t *handle,
                                                                          uint32_t block_index,
@@ -1800,12 +1818,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_detection_i8(ei_impu
                                                                          ei_impulse_result_t *result,
                                                                          void *config_ptr,
                                                                          void *state) {
-#ifdef EI_HAS_TAO_DECODE_DETECTIONS
+#if EI_HAS_TAO_DECODE_DETECTIONS
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_i8_config_t *config = (ei_fill_result_object_detection_i8_config_t*)config_ptr;
 
     ei::matrix_i8_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     EI_IMPULSE_ERROR res = process_tao_decode_detections_common(impulse,
                                                                result,
@@ -1820,7 +1841,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_detection_i8(ei_impu
     return res;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_TAO_DETECT_DETECTIONS
+#endif // #if EI_HAS_TAO_DETECT_DETECTIONS
 }
 
 __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_detection_f32(ei_impulse_handle_t *handle,
@@ -1829,12 +1850,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_detection_f32(ei_imp
                                                                              ei_impulse_result_t *result,
                                                                              void *config_ptr,
                                                                              void *state) {
-#ifdef EI_HAS_TAO_DECODE_DETECTIONS
+#if EI_HAS_TAO_DECODE_DETECTIONS
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     EI_IMPULSE_ERROR res = process_tao_decode_detections_common(impulse,
                                                                result,
@@ -1848,7 +1872,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_detection_f32(ei_imp
     return res;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_TAO_DETECT_DETECTIONS
+#endif // #if EI_HAS_TAO_DETECT_DETECTIONS
 }
 
 __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov3_f32(ei_impulse_handle_t *handle,
@@ -1857,12 +1881,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov3_f32(ei_impuls
                                                                                 ei_impulse_result_t *result,
                                                                                 void *config_ptr,
                                                                                 void *state) {
-#ifdef EI_HAS_TAO_YOLOV3
+#if EI_HAS_TAO_YOLOV3
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     EI_IMPULSE_ERROR res = process_tao_yolov3_common(impulse,
                                                      result,
@@ -1876,7 +1903,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov3_f32(ei_impuls
     return res;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_TAO_YOLOV3
+#endif // #if EI_HAS_TAO_YOLOV3
 }
 
 __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov3_i8(ei_impulse_handle_t *handle,
@@ -1885,12 +1912,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov3_i8(ei_impulse
                                                                                 ei_impulse_result_t *result,
                                                                                 void *config_ptr,
                                                                                 void *state) {
-#ifdef EI_HAS_TAO_YOLOV3
+#if EI_HAS_TAO_YOLOV3
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_i8_config_t *config = (ei_fill_result_object_detection_i8_config_t*)config_ptr;
 
     ei::matrix_i8_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     EI_IMPULSE_ERROR res = process_tao_yolov3_common(impulse,
                                                      result,
@@ -1904,7 +1934,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov3_i8(ei_impulse
     return res;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_TAO_YOLOV3
+#endif // #if EI_HAS_TAO_YOLOV3
 }
 
 __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov4_f32(ei_impulse_handle_t *handle,
@@ -1913,12 +1943,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov4_f32(ei_impuls
                                                                                 ei_impulse_result_t *result,
                                                                                 void *config_ptr,
                                                                                 void *state) {
-#ifdef EI_HAS_TAO_YOLOV4
+#if EI_HAS_TAO_YOLOV4
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     EI_IMPULSE_ERROR res = process_tao_yolov4_common(impulse,
                                                      result,
@@ -1932,7 +1965,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov4_f32(ei_impuls
     return res;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_TAO_YOLOV4
+#endif // #if EI_HAS_TAO_YOLOV4
 }
 
 __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov4_i8(ei_impulse_handle_t *handle,
@@ -1941,12 +1974,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov4_i8(ei_impulse
                                                                                 ei_impulse_result_t *result,
                                                                                 void *config_ptr,
                                                                                 void *state) {
-#ifdef EI_HAS_TAO_YOLOV4
+#if EI_HAS_TAO_YOLOV4
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_i8_config_t *config = (ei_fill_result_object_detection_i8_config_t*)config_ptr;
 
     ei::matrix_i8_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     EI_IMPULSE_ERROR res = process_tao_yolov4_common(impulse,
                                                      result,
@@ -1960,10 +1996,10 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_tao_yolov4_i8(ei_impulse
     return res;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_TAO_YOLOV4
+#endif // #if EI_HAS_TAO_YOLOV4
 }
 
-#ifdef EI_HAS_YOLO_PRO
+#if EI_HAS_YOLO_PRO
 template<typename T>
 __attribute__((unused)) static EI_IMPULSE_ERROR fill_result_struct_yolo_pro_common(const ei_impulse_t *impulse,
                                                                                     ei_impulse_result_t *result,
@@ -2063,7 +2099,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR fill_result_struct_yolo_pro_comm
     prepare_nms_results_common(object_detection_count, result, &results);
     return EI_IMPULSE_OK;
 }
-#endif // #ifdef EI_HAS_YOLO_PRO
+#endif // #if EI_HAS_YOLO_PRO
 
 __attribute__((unused)) static EI_IMPULSE_ERROR process_yolo_pro_f32(ei_impulse_handle_t *handle,
                                                                     uint32_t block_index,
@@ -2071,12 +2107,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolo_pro_f32(ei_impulse_
                                                                     ei_impulse_result_t *result,
                                                                     void *config_ptr,
                                                                     void *state) {
-#ifdef EI_HAS_YOLO_PRO
+#if EI_HAS_YOLO_PRO
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
     EI_IMPULSE_ERROR res = fill_result_struct_yolo_pro_common(impulse,
                                                                 result,
                                                                 raw_output_mtx->buffer,
@@ -2089,7 +2128,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolo_pro_f32(ei_impulse_
     return res;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_YOLO_PRO
+#endif // #if EI_HAS_YOLO_PRO
 }
 
 __attribute__((unused)) static EI_IMPULSE_ERROR process_yolo_pro_i8(ei_impulse_handle_t *handle,
@@ -2098,12 +2137,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolo_pro_i8(ei_impulse_h
                                                                     ei_impulse_result_t *result,
                                                                     void *config_ptr,
                                                                     void *state) {
-#ifdef EI_HAS_YOLO_PRO
+#if EI_HAS_YOLO_PRO
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_i8_config_t *config = (ei_fill_result_object_detection_i8_config_t*)config_ptr;
 
     ei::matrix_i8_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     EI_IMPULSE_ERROR res = fill_result_struct_yolo_pro_common(impulse,
                                                     result,
@@ -2117,10 +2159,10 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolo_pro_i8(ei_impulse_h
     return res;
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_YOLO_PRO
+#endif // #if EI_HAS_YOLO_PRO
 }
 
-#ifdef EI_HAS_YOLOV11
+#if EI_HAS_YOLOV11
 
 #define EI_YOLOV11_COORD_ABSOLUTE 0
 #define EI_YOLOV11_COORD_NORMALIZED 1
@@ -2248,7 +2290,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR fill_result_struct_yolov11_commo
     prepare_nms_results_common(object_detection_count, result, &results);
     return EI_IMPULSE_OK;
 }
-#endif // #ifdef EI_HAS_YOLOV11
+#endif // #if EI_HAS_YOLOV11
 
 /**
   * Fill the result structure from an unquantized output tensor
@@ -2259,12 +2301,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov11_f32(ei_impulse_h
                                                                     ei_impulse_result_t *result,
                                                                     void *config_ptr,
                                                                     void *state) {
-#ifdef EI_HAS_YOLOV11
+#if EI_HAS_YOLOV11
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_f32_config_t *config = (ei_fill_result_object_detection_f32_config_t*)config_ptr;
 
     ei::matrix_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     return fill_result_struct_yolov11_common(impulse,
                                              result,
@@ -2278,7 +2323,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov11_f32(ei_impulse_h
                                              config->nms_config);
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_YOLOV11
+#endif // #if EI_HAS_YOLOV11
 }
 
 /**
@@ -2290,12 +2335,15 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov11_i8(ei_impulse_ha
                                                                     ei_impulse_result_t *result,
                                                                     void *config_ptr,
                                                                     void *state) {
-#ifdef EI_HAS_YOLOV11
+#if EI_HAS_YOLOV11
     const ei_impulse_t *impulse = handle->impulse;
     const ei_fill_result_object_detection_i8_config_t *config = (ei_fill_result_object_detection_i8_config_t*)config_ptr;
 
     ei::matrix_i8_t* raw_output_mtx = NULL;
-    find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->learning_blocks_size);
+    bool find_mtx_res = find_mtx_by_idx(result->_raw_outputs, &raw_output_mtx, input_block_id, impulse->output_tensors_size);
+    if (!find_mtx_res) {
+        return EI_IMPULSE_OUTPUT_TENSOR_NULL;
+    }
 
     return fill_result_struct_yolov11_common(impulse,
                                              result,
@@ -2309,7 +2357,7 @@ __attribute__((unused)) static EI_IMPULSE_ERROR process_yolov11_i8(ei_impulse_ha
                                              config->nms_config);
 #else
     return EI_IMPULSE_LAST_LAYER_NOT_AVAILABLE;
-#endif // #ifdef EI_HAS_YOLOV11
+#endif // #if EI_HAS_YOLOV11
 }
 
 EI_IMPULSE_ERROR set_threshold_postprocessing(int16_t block_number, void* block_config, uint8_t type, float threshold) {

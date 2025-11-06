@@ -19,15 +19,9 @@
 #define MISC_TOOLBOX_H
 /* Includes ------------------------------------------------------------------*/
 #include "stm32n6xx_hal.h"
-#if NUCLEO_N6_CONFIG == 0
-#include "stm32n6570_discovery.h"
-#include "stm32n6570_discovery_bus.h"
-#include "stm32n6570_discovery_xspi.h"
-#else
 #include "stm32n6xx_nucleo.h"
 #include "stm32n6xx_nucleo_bus.h"    // No implementation of the I2c for nucleo, the dk implem is coherent
 #include "stm32n6xx_nucleo_xspi.h"
-#endif
 
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
@@ -41,6 +35,10 @@ void set_clk_sleep_mode(void);
 void upscale_vddcore_level(void);
 
 void UART_Config(void);
+void UART_Interrupt_Config(void);
+void MPU_Config(void);
+void SystemIsolation_Config(void);
+void Error_Handler(void);
 
 // Configures the NPU: Activates clocks, activate cache and setup AXI bus Master/Slave
 void NPU_Config(void);
@@ -50,7 +48,6 @@ void RISAF_Config(void);
 
 // Quick function to set the vector table address
 void set_vector_table_addr(void);
-
 // Basic initialization of the board after startup: Activates all RAMs, allow caches to be enabled.
 void system_init_post(void);
 

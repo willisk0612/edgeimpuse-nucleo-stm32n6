@@ -2,11 +2,7 @@
 #include <string.h>
 #include "system_clock_config.h"
 #include "stm32n6xx_hal.h"
-#if (NUCLEO_N6_CONFIG == 0)
-#include "stm32n6570_discovery.h"
-#else
 #include "stm32n6xx_nucleo.h"
-#endif
 
 /**
   * @brief  System Clock Configuration
@@ -346,20 +342,14 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_PeriphCLKInitTypeDef RCC_PeriphCLKInitStruct = {0};
 
-#if STM32N6570_DK_REV == STM32N6570_DK_C01
-  BSP_SMPS_Init(SMPS_VOLTAGE_OVERDRIVE);
-#else
-  /* Ensure VDDCORE=0.9V before increasing the system frequency */
   BSP_I2C2_Init();
   uint8_t tmp = 0x64;
   BSP_I2C2_WriteReg(0x49 << 1, 0x01, &tmp, 1);
   BSP_I2C2_DeInit();
-#endif
-  //HAL_Delay(1); /* Assuming Voltage Ramp Speed of 1mV/us --> 100mV increase takes 100us */
+  
   volatile uint32_t delay = 1000;
-  while (delay--); // Wait for voltage to stabilize, can't relay on HAL_Delay() here
+  while (delay--);
 
-  // Oscillator config already done in bootrom
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_NONE;
 
   /* PLL1 = 64 x 25 / 2 = 800MHz */

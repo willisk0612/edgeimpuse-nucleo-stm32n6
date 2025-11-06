@@ -1,29 +1,38 @@
-  /**
-  ******************************************************************************
-  * @file    misc_toolbox.c
-  * @author  GPM/AIS Application Team
-  * @brief   Collection of functions to perform main configurations in main.c
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2024 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+/**
+******************************************************************************
+* @file    misc_toolbox.c
+* @author  GPM/AIS Application Team
+* @brief   Collection of functions to perform main configurations in main.c
+******************************************************************************
+* @attention
+*
+* Copyright (c) 2024 STMicroelectronics.
+* All rights reserved.
+*
+* This software is licensed under terms that can be found in the LICENSE file
+* in the root directory of this software component.
+* If no LICENSE file comes with this software, it is provided AS-IS.
+*
+******************************************************************************
+*/
 
-#include <string.h>     // Used for memset
+#include <string.h> // Used for memset
 
-#include "misc_toolbox.h"
 #include "app_config.h"
-#include "npu_cache.h"  // Used in NPU_config
+#include "misc_toolbox.h"
+#ifndef TEST_CONNECTION_MODE
+#include "npu_cache.h" // Used in NPU_config
+#endif
 #include "stm32n6xx_ll_usart.h" // Used for configuring UART
+#include <stdio.h>
 
-UART_HandleTypeDef UartHandle;
+UART_HandleTypeDef hlpuart1;
+
+#define IMAGE_BUFFER_SIZE (32 * 32)
+__attribute__((aligned(32)))
+uint8_t image_buffer[IMAGE_BUFFER_SIZE];
+
+volatile uint8_t rx_complete = 0;
 
 #ifdef HAL_BSEC_MODULE_ENABLED
 static void fuse_hardware_conf(uint32_t bit_to_fuse)
@@ -49,26 +58,34 @@ static void fuse_hardware_conf(uint32_t bit_to_fuse)
           if ((data & fuse_mask) != fuse_mask)
           {
             /* Error : Fuse programming not taken in account */
-            while(1){};
+            while (1)
+            {
+            };
           }
         }
         else
         {
           /* Error : Fuse read unsuccessful */
-          while(1){};
+          while (1)
+          {
+          };
         }
       }
       else
       {
         /* Error : Fuse programming unsuccessful */
-        while(1){};
+        while (1)
+        {
+        };
       }
     }
   }
   else
   {
     /* Error  : Fuse read unsuccessful */
-    while(1){};
+    while (1)
+    {
+    };
   }
 }
 #endif
@@ -91,30 +108,12 @@ void set_clk_sleep_mode(void)
   LL_MISC_EnableClockLowPower(~0);
 }
 
-/* Change the VDDCORE level for overdrive modes
- * (Nucleo, legacy DK -before rev. C)
- * Using the I2c to control the Step-Down Converter
- *      This is mandatory / safer if an "overdrive" configuration is needed
- *      For the DK <rev.C /Nucleo, step-down converter = TPS62864
- *      Setting resistor = 56.2 kohm
- *              with 56.2kOhm: Output level: 0.80 V
- *              with 56.2kOhm: I2C device Address : 1001 001 = 0x49
- * (DK -after rev. C included)
- * Using the GPIO to control the step-down converter (for DK rev >= C)
- */
 void upscale_vddcore_level(void)
 {
-#if ((NUCLEO_N6_CONFIG == 0) && defined(STM32N6570_DK_REV) && (STM32N6570_DK_REV>=STM32N6570_DK_C01))      // Handle new DK boards with new SMPS controlled by GPIO
-  BSP_SMPS_Init(SMPS_VOLTAGE_OVERDRIVE);
-#else   // Handle Nucleo boards or DK boards before rev.C
-  uint8_t tmp;
-  tmp = 0x64;  // 0x64 is 900mV, LSB=5mV
+  uint8_t tmp = 0x64;
   BSP_I2C2_Init();
-  // Address of the device on 7 bits: API requires the address to be switched left by 1
-  // Write tmp on register 0x1 (Vout register 1), length=1
   BSP_I2C2_WriteReg(0x49 << 1, 0x01, &tmp, 1);
-#endif
-  HAL_Delay(1); /* Assuming Voltage Ramp Speed of 1mV/us --> 100mV increase takes 100us */
+  HAL_Delay(1);
 }
 
 /* Initialises UART @  USE_UART_BAUDRATE
@@ -124,57 +123,154 @@ void upscale_vddcore_level(void)
 void UART_Config(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
 
   setvbuf(stdin, NULL, _IONBF, 0);
   setvbuf(stdout, NULL, _IONBF, 0);
 
+  /* Initialize peripherals clock */
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LPUART1;
+  PeriphClkInitStruct.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK4;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
   /* Peripheral clock enable */
-  __HAL_RCC_USART1_CLK_ENABLE();
-  __HAL_RCC_USART1_FORCE_RESET();
-  __HAL_RCC_USART1_RELEASE_RESET();
+  __HAL_RCC_LPUART1_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
 
-    /**USART1 GPIO Configuration
-   * PE5     ------> USART1_TX
-   * PE6     ------> USART1_RX
-   */
-  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  /* LPUART1 GPIO Configuration: PE5->LPUART1_TX, PE6->LPUART1_RX */
+  GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-  GPIO_InitStruct.Pin = GPIO_PIN_6;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
+  GPIO_InitStruct.Alternate = GPIO_AF3_LPUART1;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /* Peripheral config */
-  UartHandle.Instance = USART1;
-  UartHandle.Init.BaudRate = USE_UART_BAUDRATE;
-  UartHandle.Init.WordLength = UART_WORDLENGTH_8B;
-  UartHandle.Init.StopBits = UART_STOPBITS_1;
-  UartHandle.Init.Parity = UART_PARITY_NONE;
-  UartHandle.Init.Mode = UART_MODE_TX_RX;
-  UartHandle.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  UartHandle.Init.OverSampling = UART_OVERSAMPLING_8;
-  UartHandle.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  UartHandle.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&UartHandle) != HAL_OK)
+  hlpuart1.Instance = LPUART1;
+  hlpuart1.Init.BaudRate = 9600;
+  hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
+  hlpuart1.Init.StopBits = UART_STOPBITS_1;
+  hlpuart1.Init.Parity = UART_PARITY_NONE;
+  hlpuart1.Init.Mode = UART_MODE_TX_RX;
+  hlpuart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  hlpuart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  hlpuart1.Init.ClockPrescaler = UART_PRESCALER_DIV8;
+  hlpuart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  hlpuart1.FifoMode = UART_FIFOMODE_DISABLE;
+  if (HAL_UART_Init(&hlpuart1) != HAL_OK)
   {
-    while(1){};
+    Error_Handler();
   }
-  // Disable FIFO mode
-  if (HAL_UARTEx_SetRxFifoThreshold(&UartHandle, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetTxFifoThreshold(&hlpuart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
   {
-    while (1);
+    Error_Handler();
   }
-  if (HAL_UARTEx_EnableFifoMode(&UartHandle) != HAL_OK)
+  if (HAL_UARTEx_SetRxFifoThreshold(&hlpuart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
   {
-    while (1);
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&hlpuart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+void UART_Interrupt_Config(void)
+{
+  /* Configure LPUART1 interrupt */
+  HAL_NVIC_SetPriority(LPUART1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(LPUART1_IRQn);
+}
+
+void SystemIsolation_Config(void)
+{
+  /* set all required IPs as non-secure and non-privileged */
+  __HAL_RCC_RIFSC_CLK_ENABLE();
+
+  /* set up GPIO configuration */
+  HAL_GPIO_ConfigPinAttributes(GPIOE, GPIO_PIN_5, GPIO_PIN_SEC | GPIO_PIN_NPRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOE, GPIO_PIN_6, GPIO_PIN_SEC | GPIO_PIN_NPRIV);
+}
+
+void HAL_UART_MspInit(UART_HandleTypeDef *huart)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
+
+  if (huart->Instance == LPUART1)
+  {
+    /* Initialize peripherals clock */
+    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LPUART1;
+    PeriphClkInitStruct.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK4;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    /* Enable peripheral clock */
+    __HAL_RCC_LPUART1_CLK_ENABLE();
+    __HAL_RCC_GPIOE_CLK_ENABLE();
+
+    /* LPUART1 GPIO Configuration: PE5->LPUART1_TX, PE6->LPUART1_RX */
+    GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF3_LPUART1;
+    HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+    /* LPUART1 interrupt Init */
+    HAL_NVIC_SetPriority(LPUART1_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(LPUART1_IRQn);
+  }
+}
+
+void HAL_UART_MspDeInit(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == LPUART1)
+  {
+    /* Disable peripheral clock */
+    __HAL_RCC_LPUART1_CLK_DISABLE();
+
+    /* LPUART1 GPIO Configuration: PE5->LPUART1_TX, PE6->LPUART1_RX */
+    HAL_GPIO_DeInit(GPIOE, GPIO_PIN_5 | GPIO_PIN_6);
+  }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == LPUART1)
+  {
+    rx_complete = 1;
+
+    const char *ackMsg = "Received 1024 bytes\r\n";
+    HAL_UART_Transmit(&hlpuart1, (uint8_t *)ackMsg, strlen(ackMsg), HAL_MAX_DELAY);
+  }
+}
+
+void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
+{
+  // Not used in interrupt mode
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == LPUART1)
+  {
+    // Clear error flags
+    __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_PEF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_OREF);
+
+    // Turn on red LED to indicate error
+    BSP_LED_On(LED2);
+
+    // Reset reception variables
+    rx_complete = 0;
+
+    // Restart interrupt-based reception
+    HAL_UART_Receive_IT(huart, image_buffer, IMAGE_BUFFER_SIZE);
   }
 }
 
@@ -192,32 +288,21 @@ void NPU_Config(void)
   __HAL_RCC_AXISRAM6_MEM_CLK_ENABLE();
   __HAL_RCC_RAMCFG_CLK_ENABLE();
 
-#if 0
-  // Enable Cache-AXI
-  __HAL_RCC_CACHEAXI_CLK_ENABLE();
-  __HAL_RCC_CACHEAXI_FORCE_RESET();
-  __HAL_RCC_CACHEAXI_RELEASE_RESET();
-
-  // __HAL_RCC_CACHEAXI_CLK_SLEEP_DISABLE();
-  // __HAL_RCC_NPU_CLK_SLEEP_DISABLE();
-  // __HAL_RCC_RAMCFG_CLK_SLEEP_DISABLE();
-#else
   RAMCFG_HandleTypeDef hramcfg = {0};
-  hramcfg.Instance =  RAMCFG_SRAM3_AXI;
+  hramcfg.Instance = RAMCFG_SRAM3_AXI;
   HAL_RAMCFG_EnableAXISRAM(&hramcfg);
-  hramcfg.Instance =  RAMCFG_SRAM4_AXI;
+  hramcfg.Instance = RAMCFG_SRAM4_AXI;
   HAL_RAMCFG_EnableAXISRAM(&hramcfg);
-  hramcfg.Instance =  RAMCFG_SRAM5_AXI;
+  hramcfg.Instance = RAMCFG_SRAM5_AXI;
   HAL_RAMCFG_EnableAXISRAM(&hramcfg);
-  hramcfg.Instance =  RAMCFG_SRAM6_AXI;
+  hramcfg.Instance = RAMCFG_SRAM6_AXI;
   HAL_RAMCFG_EnableAXISRAM(&hramcfg);
-#endif
   npu_cache_init();
 
 #ifdef USE_NPU_CACHE
-   npu_cache_enable(); // Useless: already enabled by init
+  npu_cache_enable(); // Useless: already enabled by init
 #else
-   npu_cache_disable();
+  npu_cache_disable();
 #endif
 
 #if 0 // this is done in RISAF_Config
@@ -230,7 +315,6 @@ void NPU_Config(void)
 #endif
 }
 
-
 void RISAF_Config(void)
 {
   __HAL_RCC_RIFSC_CLK_ENABLE();
@@ -238,35 +322,25 @@ void RISAF_Config(void)
   RIMC_master.MasterCID = RIF_CID_1;
   RIMC_master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;
   HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_NPU, &RIMC_master);
-  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DMA2D, &RIMC_master);
-  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DCMIPP, &RIMC_master);
-  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC1 , &RIMC_master);
-  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC2 , &RIMC_master);
-  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_OTG1 , &RIMC_master);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_NPU , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DMA2D , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_CSI    , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DCMIPP , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_LTDC   , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_LTDCL1 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_LTDCL2 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_OTG1HS , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_SPI5 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_OTG1, &RIMC_master);
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_NPU, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_CSI, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_OTG1HS, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_SPI5, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
 }
 
 void set_vector_table_addr(void)
 {
   __disable_irq();
-  SCB->VTOR = 0x34000000;   // USED WITH no FLEXMEM Extension (standard scenario)
-  //SCB->VTOR = 0x10000000; // USED WITH FLEXMEM Extension  (execution from ITCM only)
+  SCB->VTOR = 0x34000000; // USED WITH no FLEXMEM Extension (standard scenario)
+  // SCB->VTOR = 0x10000000; // USED WITH FLEXMEM Extension  (execution from ITCM only)
   /* Set default Vector Table location after system reset or return from Standby */
-  //SYSCFG->INITSVTORCR = SCB->VTOR;
+  // SYSCFG->INITSVTORCR = SCB->VTOR;
   __DSB();
   memset((uint32_t *)NVIC->ICER, 0xFF, sizeof(NVIC->ICER)); // Disable all irq (IRQ 139 is enabled by default)
   memset((uint32_t *)NVIC->ICPR, 0xFF, sizeof(NVIC->ICPR)); // Clear pending IRQs (LPTIM4 has a pending IRQ when exiting bootrom)
   __enable_irq();
 }
-
 
 void system_init_post(void)
 {
@@ -289,7 +363,7 @@ void system_init_post(void)
 
 void IAC_Config(void)
 {
-/* Configure IAC to trap illegal access events */
+  /* Configure IAC to trap illegal access events */
   __HAL_RCC_IAC_CLK_ENABLE();
   __HAL_RCC_IAC_FORCE_RESET();
   __HAL_RCC_IAC_RELEASE_RESET();
@@ -298,9 +372,18 @@ void IAC_Config(void)
 #ifdef HAL_BSEC_MODULE_ENABLED
 void fuse_vddio(void)
 {
-    // Fuse bit for VDDIO2 (HSLV_VDDIO2): used for PSRAM / XSPIM 1
-    fuse_hardware_conf(16);
-    // Fuse bit for VDDIO3 (HSLV_VDDIO3): used for external Flash / XSPIM2
-    fuse_hardware_conf(15);
+  // Fuse bit for VDDIO2 (HSLV_VDDIO2): used for PSRAM / XSPIM 1
+  fuse_hardware_conf(16);
+  // Fuse bit for VDDIO3 (HSLV_VDDIO3): used for external Flash / XSPIM2
+  fuse_hardware_conf(15);
 }
 #endif
+
+void Error_Handler(void)
+{
+  BSP_LED_On(LED2);
+  __disable_irq();
+  while (1)
+  {
+  }
+}

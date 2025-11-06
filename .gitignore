@@ -1,16 +1,2 @@
-# ei
-# /edgeimpulse/edge-impulse-sdk
-# /edgeimpulse/tflite-model
-# /edgeimpulse/model-parameters
-# /Model/network.c
-# /Model/network_data.hex
-
-
 # build output
 /build
-
-# model build output
-/Model/st_ai_output
-/Model/st_ai_ws
-/Model/*.tflite
-/Model/*.lite

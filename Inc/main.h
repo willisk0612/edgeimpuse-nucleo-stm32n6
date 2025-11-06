@@ -23,10 +23,23 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32n6xx_hal.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/
 /* Exported functions ------------------------------------------------------- */
 
-#endif /* MAIN_H */
+/* External variables for UART console */
+extern UART_HandleTypeDef hlpuart1;
 
+void LED_BLUE_Blink(void);
+void ProcessUartReception(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* MAIN_H */

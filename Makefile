@@ -1,3 +1,6 @@
+# Set TEST_CONNECTION=1 to exclude Edge Impulse and AI_Runtime, made for testing UART connection
+TEST_CONNECTION = 0
+
 ######################################
 # quiet mode
 ######################################
@@ -23,9 +26,6 @@ rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(su
 # target
 ######################################
 TARGET = Project
- # Supported Options: IMX335; OV5640; VD66GY; VD55G1; VD1941
-SENSOR = IMX335
- # Supported Options: C01; B01; A01; A03
 REV_BOARD = C01
 
 MODEL_DIR = Model
@@ -53,12 +53,14 @@ C_SOURCES += Src/misc_toolbox.c
 C_SOURCES += Src/system_clock_config.c
 C_SOURCES += Src/sysmem.c
 C_SOURCES += Src/timer_config.c
+ifneq ($(TEST_CONNECTION), 1)
 C_SOURCES += Model/network.c
+endif
 
 # ASM sources
 ASM_SOURCES =
 ASM_SOURCES_S =
-#GCC_PATH=
+GCC_PATH=
 #######################################
 # binaries
 #######################################
@@ -101,27 +103,12 @@ MCU = $(CPU) $(FPU)
 
 # C defines
 C_DEFS += -DSTM32N657xx
-#C_DEFS += -DUSE_STM32N6570_DK
 C_DEFS += -DUSE_STM32N6570_NUCLEO_REV_B01
 C_DEFS += -DUSE_FULL_ASSERT
 C_DEFS += -DUSE_FULL_LL_DRIVER
 C_DEFS += -DVECT_TAB_SRAM
 C_DEFS += -DNUCLEO_N6_CONFIG=1
 C_DEFS += -DUSER_VECT_TAB_ADDRESS
-
-ifeq ($(REV_BOARD),B01)
-C_DEFS += -DSTM32N6570_DK_REV=STM32N6570_DK_B01
-endif
-ifeq ($(REV_BOARD),C01)
-C_DEFS += -DSTM32N6570_DK_REV=STM32N6570_DK_C01
-endif
-ifeq ($(REV_BOARD),A01)
-C_DEFS += -DSTM32N6570_DK_REV=STM32N6570_DK_A01
-endif
-ifeq ($(REV_BOARD),A03)
-#this is not a typo
-C_DEFS += -DSTM32N6570_DK_REV=STM32N6570_DK_A01
-endif
 
 ifneq ($(REV_BOARD),C01)
 C_DEFS += -DSTM32N6XX_SI_CUT1_1
@@ -155,7 +142,6 @@ CFLAGS += -std=gnu11
 # LDFLAGS
 #######################################
 # link script
-#LDSCRIPT = Gcc/STM32N657xx.ld
 LDSCRIPT = Gcc/STM32N657xx_nucleo.ld
 
 # libraries
@@ -174,9 +160,15 @@ all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET
 #######################################
 # Include mk files
 #######################################
-include mks/ei.mk
+# Conditionally include Edge Impulse and AI Runtime files
+ifeq ($(TEST_CONNECTION), 1)
+    $(info Test Connection Mode: Edge Impulse and AI Runtime excluded)
+    C_DEFS += -DTEST_CONNECTION_MODE
+else
+    include mks/ei.mk
+    include mks/ai.mk
+endif
 include mks/fw.mk
-include mks/ai.mk
 include mks/gcc.mk
 
 #CXX_INCLUDES += $(C_INCLUDES_THREADX)
@@ -213,10 +205,6 @@ $(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
 
 # $(BUILD_DIR)/$(TARGET).list: $(OBJECTS)
 # 	$(file > $@, $(OBJECTS))
-
-# $(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) Makefile $(BUILD_DIR)/$(TARGET).list
-# 	$($(quiet)LD) @$(BUILD_DIR)/$(TARGET).list $(LDFLAGS) -o $@
-# 	$($(quiet)SZ) $@
 
 # Create response file to avoid command line length limits
 $(BUILD_DIR)/objects.txt: $(OBJECTS)

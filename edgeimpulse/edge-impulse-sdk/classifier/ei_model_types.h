@@ -62,8 +62,9 @@
 #define EI_CLASSIFIER_ETHOS_LINUX                13
 #define EI_CLASSIFIER_ATON                       14
 #define EI_CLASSIFIER_CEVA_NPN                   15
+#define EI_CLASSIFIER_NORDIC_AXON                16
 
-#define EI_CLASSIFIER_SENSOR_UNKNOWN             -1
+#define EI_CLASSIFIER_SENSOR_UNKNOWN             255
 #define EI_CLASSIFIER_SENSOR_MICROPHONE          1
 #define EI_CLASSIFIER_SENSOR_ACCELEROMETER       2
 #define EI_CLASSIFIER_SENSOR_CAMERA              3
@@ -107,6 +108,14 @@
 #define EI_CLASSIFIER_MODE_VISUAL_ANOMALY      5
 #define EI_CLASSIFIER_MODE_ANOMALY_KMEANS      6
 #define EI_CLASSIFIER_MODE_DSP                 7
+#define EI_CLASSIFIER_MODE_FREEFORM            8
+
+#define EI_CLASSIFIER_TYPE_NONE                0
+#define EI_CLASSIFIER_TYPE_CLASSIFICATION      1
+#define EI_CLASSIFIER_TYPE_REGRESSION          2
+#define EI_CLASSIFIER_TYPE_OBJECT_DETECTION    3
+#define EI_CLASSIFIER_TYPE_OBJECT_TRACKING     4
+#define EI_CLASSIFIER_TYPE_FREEFORM            5
 
 #ifndef EI_CLASSIFIER_DSP_AXES_INDEX_TYPE
 #define EI_CLASSIFIER_DSP_AXES_INDEX_TYPE       uint8_t
@@ -244,6 +253,14 @@ typedef struct {
     uint8_t quant_type;
 } ei_config_aton_graph_t;
 
+/** Configuration for the nordic_axon.h */
+typedef struct {
+    uint16_t implementation_version;
+    uint8_t quant_type;
+    float input_scale;
+    float input_zeropoint;
+} ei_config_nordic_axon_graph_t;
+
 /** Configuration for the aton.h */
 typedef struct {
     uint16_t implementation_version;
@@ -369,6 +386,9 @@ typedef struct ei_impulse {
     size_t postprocessing_blocks_size;
     const ei_postprocessing_block_t *postprocessing_blocks;
 
+    /* output tensor size */
+    uint8_t output_tensors_size;
+
     /* inference parameters */
     uint8_t inferencing_engine;
 
@@ -382,6 +402,9 @@ typedef struct ei_impulse {
     uint8_t has_anomaly;
     uint16_t label_count;
     const char **categories;
+    uint8_t results_type;
+    uint8_t freeform_outputs_size;
+    uint32_t *freeform_outputs;
 } ei_impulse_t;
 
 class ei_impulse_state_t {
@@ -443,10 +466,20 @@ public:
 class ei_impulse_handle_t {
 public:
     ei_impulse_handle_t(const ei_impulse_t *impulse)
-        : state(impulse), impulse(impulse), post_processing_state(nullptr) {};
+        : state(impulse)
+        , impulse(impulse)
+        , post_processing_state(nullptr)
+#if EI_CLASSIFIER_FREEFORM_OUTPUT
+        , freeform_outputs(nullptr)
+#endif //EI_CLASSIFIER_FREEFORM_OUTPUT
+        { /* ei_impulse_handle_t ctor */};
+
     ei_impulse_state_t state;
     const ei_impulse_t *impulse;
     void** post_processing_state;
+#if EI_CLASSIFIER_FREEFORM_OUTPUT == 1
+    ei::matrix_t *freeform_outputs;
+#endif // EI_CLASSIFIER_FREEFORM_OUTPUT
 };
 
 typedef struct {

@@ -19,6 +19,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32n6xx_hal.h"
 #include "stm32n6xx_it.h"
+#include "misc_toolbox.h"
+
+extern UART_HandleTypeDef hlpuart1;
 
 /**
   * @brief   This function handles NMI exception.
@@ -138,16 +141,12 @@ void SysTick_Handler(void)
 /*  file (startup_stm32n6xx.s).                                               */
 /******************************************************************************/
 
-#if 0 // not using camera
 
-void CSI_IRQHandler(void)
+
+/**
+  * @brief This function handles LPUART1 global interrupt.
+  */
+void LPUART1_IRQHandler(void)
 {
-  HAL_DCMIPP_CSI_IRQHandler(CMW_CAMERA_GetDCMIPPHandle());
+  HAL_UART_IRQHandler(&hlpuart1);
 }
-
-void DCMIPP_IRQHandler(void)
-{
-  HAL_DCMIPP_IRQHandler(CMW_CAMERA_GetDCMIPPHandle());
-}
-
-#endif

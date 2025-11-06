@@ -21,12 +21,9 @@ CXX_INCLUDES += -ILib
 CXX_INCLUDES += -ILib/AI_Runtime/Inc
 CXX_INCLUDES += -ILib/AI_Runtime/Npu/ll_aton
 CXX_INCLUDES += -ILib/AI_Runtime/Npu/Devices/STM32N6XX
-CXX_INCLUDES += -ILib/Camera_Middleware
-CXX_INCLUDES += -ILib/Camera_Middleware/sensors
-CXX_INCLUDES += -ILib/Camera_Middleware/ISP_Library/isp/Inc
 CXX_INCLUDES += -ISTM32Cube_FW_N6/Drivers/STM32N6xx_HAL_Driver/Inc
 CXX_INCLUDES += -ISTM32Cube_FW_N6/Drivers/CMSIS/Device/ST/STM32N6xx/Include
-CXX_INCLUDES += -ISTM32Cube_FW_N6/Drivers/BSP/STM32N6570-DK
+CXX_INCLUDES += -ISTM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo
 CXX_INCLUDES += -ISTM32Cube_FW_N6/Drivers/BSP/Components/Common
 
 CXX_INCLUDES += -Iedgeimpulse/edge-impulse-sdk/CMSIS/Core/Include

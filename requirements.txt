@@ -1,0 +1,6 @@
+PySide6
+pillow
+numpy
+pyserial
+pyperclip
+opencv-python

@@ -11,6 +11,7 @@ for %%i in ("%PROGRAMMER_PATH%") do set PROGRAMMER_DIR=%%~dpi
 set FLASH_FIRMWARE=firmware
 set FLASH_WEIGHTS=weights
 set FLASH_BOOTLOADER=bootloader
+set FLASH_ERASE=erase
 set FLASHER=STM32_Programmer_CLI
 set EL=%PROGRAMMER_DIR%ExternalLoader\MX25UM51245G_STM32N6570-NUCLEO.stldr
 
@@ -18,13 +19,14 @@ set TARGET=%1
 
 if not defined TARGET SET TARGET=all
 
-if "%TARGET%" NEQ "firmware" if "%TARGET%" NEQ "weights" if "%TARGET%" NEQ "bootloader" if "%TARGET%" NEQ "all" goto INVALIDTARGET
+if "%TARGET%" NEQ "firmware" if "%TARGET%" NEQ "weights" if "%TARGET%" NEQ "bootloader" if "%TARGET%" NEQ "all" if "%TARGET%" NEQ "erase" goto INVALIDTARGET
 
 echo Flashing %TARGET%
 
 IF "%TARGET%" == "%FLASH_WEIGHTS%" goto :FLASH_W
 IF "%TARGET%" == "%FLASH_BOOTLOADER%" goto :FLASH_B
 IF "%TARGET%" == "%FLASH_FIRMWARE%" goto :FLASH_F
+IF "%TARGET%" == "%FLASH_ERASE%" goto :FLASH_E
 
 %FLASHER% -c port=SWD mode=HOTPLUG ap=1 -el %EL% -hardRst -w Model\network_data.hex
 %FLASHER% -c port=SWD mode=HOTPLUG ap=1 -el %EL% -hardRst -w build\Project.bin 0x70080000
@@ -41,6 +43,11 @@ goto :COMMON_EXIT
 
 :FLASH_B
     %FLASHER% -c port=SWD mode=HOTPLUG ap=1 -el %EL% -hardRst -w ai_fsbl_cut_2_0.hex
+goto :COMMON_EXIT
+
+REM erase bootloader sectors
+:FLASH_E
+    %FLASHER% -c port=SWD mode=HOTPLUG ap=1 -el %EL% --erase [0 7] -hardRst
 goto :COMMON_EXIT
 
 :INVALIDTARGET
