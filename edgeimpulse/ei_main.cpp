@@ -41,6 +41,10 @@
 #include <cstdio>
 #include <stdint.h>
 #include <string.h>
+#if defined(USE_NS_TIMER) && (USE_NS_TIMER == 1)
+#include "timer_config.h"
+#endif
+
 
 extern UART_HandleTypeDef hlpuart1;
 static int8_t received_image_buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];

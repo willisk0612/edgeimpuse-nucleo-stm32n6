@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 extern HAL_StatusTypeDef timer_config_init(void);
-extern uint64_t timer_config_read_ns(void);
+extern uint64_t timer_config_read_us(void);
 
 #ifdef __cplusplus
 }

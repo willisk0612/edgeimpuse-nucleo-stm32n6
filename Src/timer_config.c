@@ -1,12 +1,44 @@
+/* The Clear BSD License
+ *
+ * Copyright (c) 2025 EdgeImpulse Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the disclaimer
+ * below) provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ *
+ *   * Redistributions in binary form must reproduce the above copyright
+ *   notice, this list of conditions and the following disclaimer in the
+ *   documentation and/or other materials provided with the distribution.
+ *
+ *   * Neither the name of the copyright holder nor the names of its
+ *   contributors may be used to endorse or promote products derived from this
+ *   software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+ * THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+ * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+ * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "timer_config.h"
 #include "stm32n6xx_hal_tim.h"
 
-#define TIM_CNT_FREQ_NS    (1000000U) /* Timer frequency counter : 1 MHz => 1 ns */
+#define TIM_CNT_FREQ_US    (1000000U) /* Timer frequency counter : 1 MHz => 1 us */
 
 static TIM_HandleTypeDef        TimHandle;
 
-static uint32_t _timer_ns;
 static uint32_t fact;
 static uint32_t time_overflow_timer;
 static uint64_t overflow_time;
@@ -23,7 +55,6 @@ HAL_StatusTypeDef timer_config_init(void)
     uint32_t              uwAPB1Prescaler;
     HAL_StatusTypeDef     Status;
 
-    _timer_ns = 0;
     time_overflow_timer = 0;
 
     /* Enable TIM2 clock */
@@ -56,7 +87,7 @@ HAL_StatusTypeDef timer_config_init(void)
         uwTimclock /= 8;
     }
 
-    fact = __HAL_TIM_CALC_PSC(uwTimclock, TIM_CNT_FREQ_NS);
+    fact = __HAL_TIM_CALC_PSC(uwTimclock, TIM_CNT_FREQ_US);
     overflow_time = ((uint64_t)1 << 32) / fact;
     
     /* Initialize TIM2 */
@@ -84,12 +115,15 @@ HAL_StatusTypeDef timer_config_init(void)
 /*
  * 
 */
-uint64_t timer_config_read_ns(void)
+uint64_t timer_config_read_us(void)
 {
     return (uint64_t)((time_overflow_timer * overflow_time)
         + (TIM2->CNT));
 }
 
+/**
+ * 
+ */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     time_overflow_timer++;
