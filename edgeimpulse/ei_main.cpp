@@ -84,7 +84,7 @@ extern "C" void ei_classify_callback(uint8_t *image_data, uint32_t size)
     ei_printf("ERROR: Invalid image size (expected %d, got %lu)\n",
               EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE, size);
     const char *errorMsg = "Classification failed\r\n";
-    HAL_UART_Transmit(&hlpuart1, (uint8_t *)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+    printf("%s", errorMsg);
     return;
   }
 
@@ -103,7 +103,7 @@ extern "C" void ei_classify_callback(uint8_t *image_data, uint32_t size)
   {
     ei_printf("ERROR: Classifier failed with code %d\n", res);
     const char *errorMsg = "Classification failed\r\n";
-    HAL_UART_Transmit(&hlpuart1, (uint8_t *)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+    printf("%s", errorMsg);
     return;
   }
 
@@ -120,5 +120,5 @@ extern "C" void ei_classify_callback(uint8_t *image_data, uint32_t size)
 
   char response[32];
   sprintf(response, "Predicted: %d\r\n", predicted_digit);
-  HAL_UART_Transmit(&hlpuart1, (uint8_t *)response, strlen(response), HAL_MAX_DELAY);
+  printf("%s", response);
 }

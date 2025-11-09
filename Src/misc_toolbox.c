@@ -247,7 +247,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     rx_complete = 1;
 
     const char *ackMsg = "Received 1024 bytes\r\n";
-    HAL_UART_Transmit(&hlpuart1, (uint8_t *)ackMsg, strlen(ackMsg), HAL_MAX_DELAY);
+    printf("%s", ackMsg);
   }
 }
 

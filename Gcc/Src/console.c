@@ -20,6 +20,7 @@
 #include <errno.h>
 #include <unistd.h>
 
+// Redirect printf to UART
 int _write(int file, char *ptr, int len)
 {
   HAL_StatusTypeDef status;
