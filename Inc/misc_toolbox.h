@@ -36,6 +36,9 @@ void upscale_vddcore_level(void);
 
 void UART_Config(void);
 void UART_Interrupt_Config(void);
+void UART_StartStreamReception(void);
+uint32_t UART_RingBuffer_Available(void);
+uint32_t UART_RingBuffer_Read(uint8_t *dst, uint32_t len);
 void MPU_Config(void);
 void SystemIsolation_Config(void);
 void Error_Handler(void);

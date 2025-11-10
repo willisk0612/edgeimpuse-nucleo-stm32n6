@@ -28,11 +28,95 @@
 
 UART_HandleTypeDef hlpuart1;
 
+// UART stream reception ring buffer, implemented with FIFO and ReceiveToIdle interrupt mode
+#define UART_RX_RING_BUFFER_SIZE   (4096U)
+#define UART_RX_CHUNK_SIZE         (256U)
+
+static uint8_t uart_rx_ring[UART_RX_RING_BUFFER_SIZE];
+static volatile uint32_t uart_rx_head = 0; // ISR writes
+static volatile uint32_t uart_rx_tail = 0; // Main reads
+static uint8_t uart_rx_chunk[UART_RX_CHUNK_SIZE];
+
+/* Legacy image buffer symbol used by main for classification */
 #define IMAGE_BUFFER_SIZE (32 * 32)
 __attribute__((aligned(32)))
 uint8_t image_buffer[IMAGE_BUFFER_SIZE];
 
-volatile uint8_t rx_complete = 0;
+
+static inline uint32_t rb_count(void)
+{
+  uint32_t head = uart_rx_head;
+  uint32_t tail = uart_rx_tail;
+  return (head >= tail) ? (head - tail) : (UART_RX_RING_BUFFER_SIZE - (tail - head));
+}
+
+static inline uint32_t rb_space(void)
+{
+  return UART_RX_RING_BUFFER_SIZE - rb_count() - 1U;
+}
+
+static void rb_write_bytes(const uint8_t *src, uint32_t len)
+{
+  uint32_t free_space = rb_space();
+  if (len > free_space)
+  {
+    len = free_space; // drop overflow bytes if any
+    BSP_LED_On(LED2); // indicate overflow
+  }
+
+  uint32_t head = uart_rx_head;
+  uint32_t first_part = UART_RX_RING_BUFFER_SIZE - head;
+  if (first_part > len)
+  {
+    first_part = len;
+  }
+  memcpy(&uart_rx_ring[head], src, first_part);
+  uint32_t remaining = len - first_part;
+  if (remaining)
+  {
+    memcpy(&uart_rx_ring[0], src + first_part, remaining);
+  }
+  head = (head + len) % UART_RX_RING_BUFFER_SIZE;
+  uart_rx_head = head;
+}
+
+uint32_t UART_RingBuffer_Available(void)
+{
+  return rb_count();
+}
+
+uint32_t UART_RingBuffer_Read(uint8_t *dst, uint32_t len)
+{
+  uint32_t available = rb_count();
+  if (len > available)
+  {
+    len = available;
+  }
+  uint32_t tail = uart_rx_tail;
+  uint32_t first_part = UART_RX_RING_BUFFER_SIZE - tail;
+  if (first_part > len)
+  {
+    first_part = len;
+  }
+  memcpy(dst, &uart_rx_ring[tail], first_part);
+  uint32_t remaining = len - first_part;
+  if (remaining)
+  {
+    memcpy(dst + first_part, &uart_rx_ring[0], remaining);
+  }
+  tail = (tail + len) % UART_RX_RING_BUFFER_SIZE;
+  uart_rx_tail = tail;
+  return len;
+}
+
+void UART_StartStreamReception(void)
+{
+  /* Arm continuous reception to IDLE on chunk buffer */
+  if (HAL_UARTEx_ReceiveToIdle_IT(&hlpuart1, uart_rx_chunk, UART_RX_CHUNK_SIZE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
 
 #ifdef HAL_BSEC_MODULE_ENABLED
 static void fuse_hardware_conf(uint32_t bit_to_fuse)
@@ -150,7 +234,7 @@ void UART_Config(void)
 
   /* Peripheral config */
   hlpuart1.Instance = LPUART1;
-  hlpuart1.Init.BaudRate = 9600;
+  hlpuart1.Init.BaudRate = USE_UART_BAUDRATE;
   hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
   hlpuart1.Init.StopBits = UART_STOPBITS_1;
   hlpuart1.Init.Parity = UART_PARITY_NONE;
@@ -159,7 +243,7 @@ void UART_Config(void)
   hlpuart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   hlpuart1.Init.ClockPrescaler = UART_PRESCALER_DIV8;
   hlpuart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  hlpuart1.FifoMode = UART_FIFOMODE_DISABLE;
+  hlpuart1.FifoMode = UART_FIFOMODE_ENABLE;
   if (HAL_UART_Init(&hlpuart1) != HAL_OK)
   {
     Error_Handler();
@@ -168,11 +252,11 @@ void UART_Config(void)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetRxFifoThreshold(&hlpuart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetRxFifoThreshold(&hlpuart1, UART_RXFIFO_THRESHOLD_1_2) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_DisableFifoMode(&hlpuart1) != HAL_OK)
+  if (HAL_UARTEx_EnableFifoMode(&hlpuart1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -242,18 +326,25 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef *huart)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  if (huart->Instance == LPUART1)
-  {
-    rx_complete = 1;
-
-    const char *ackMsg = "Received 1024 bytes\r\n";
-    printf("%s", ackMsg);
-  }
+  /* Not used in stream mode */
 }
 
 void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
 {
-  // Not used in interrupt mode
+  /* Not used in stream mode */
+}
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Pos)
+{
+  if (huart->Instance == LPUART1)
+  {
+    if (Pos > 0U)
+    {
+      rb_write_bytes(uart_rx_chunk, Pos);
+    }
+    /* Re-arm reception for continuous stream */
+    (void)HAL_UARTEx_ReceiveToIdle_IT(&hlpuart1, uart_rx_chunk, UART_RX_CHUNK_SIZE);
+  }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
@@ -266,11 +357,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     // Turn on red LED to indicate error
     BSP_LED_On(LED2);
 
-    // Reset reception variables
-    rx_complete = 0;
-
-    // Restart interrupt-based reception
-    HAL_UART_Receive_IT(huart, image_buffer, IMAGE_BUFFER_SIZE);
+    // Restart continuous reception
+    (void)HAL_UARTEx_ReceiveToIdle_IT(huart, uart_rx_chunk, UART_RX_CHUNK_SIZE);
   }
 }
 

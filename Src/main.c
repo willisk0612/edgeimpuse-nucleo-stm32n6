@@ -55,15 +55,13 @@ void LED_BLUE_Blink(void)
   }
 }
 
-extern volatile uint8_t rx_complete;
-
 void ProcessUartReception(void)
 {
-  if (rx_complete)
+  /* Consume continuous UART stream in 1,024-byte frames */
+  if (UART_RingBuffer_Available() >= IMAGE_BUFFER_SIZE)
   {
-    rx_complete = 0;
+    (void)UART_RingBuffer_Read(image_buffer, IMAGE_BUFFER_SIZE);
     ei_classify_callback(image_buffer, IMAGE_BUFFER_SIZE);
-    HAL_UART_Receive_IT(&hlpuart1, image_buffer, IMAGE_BUFFER_SIZE);
   }
 }
 
@@ -120,11 +118,8 @@ int main(void)
   UART_Interrupt_Config();
   SystemIsolation_Config();
 
-  /* Start interrupt-based reception */
-  if (HAL_UART_Receive_IT(&hlpuart1, image_buffer, IMAGE_BUFFER_SIZE) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  /* Start continuous stream reception (ReceiveToIdle IT + RX FIFO) */
+  UART_StartStreamReception();
 
 #ifndef TEST_CONNECTION_MODE
   printf("Starting Edge Impulse...\n");
