@@ -23,9 +23,9 @@ from serial import Serial
 from serial.tools import list_ports
 
 IMG_SIZE = 32
-CANVAS_SIZE = 280
-INK_THICKNESS = 80
-PADDING = 25
+CANVAS_SIZE = 320
+INK_THICKNESS = 18
+PADDING = 0.25
 DEFAULT_BAUDRATE = 9600
 DEFAULT_COM = "COM3"
 DEFAULT_STOPBITS = 1
@@ -39,7 +39,7 @@ SHARPEN_WEIGHT = 1.2
 SHARPEN_BLUR_WEIGHT = -0.2
 BRIGHTNESS_MULTIPLIER = 1.1
 SERIAL_POLL_INTERVAL = 0.05
-
+TARGET_STROKE = 2.5
 
 class Canvas(QWidget):
     def __init__(self, parent=None):
@@ -155,34 +155,53 @@ class HandwritingLiveApp(QWidget):
         self.setup_ui()
         self.populate_com_ports()
 
-    def process_canvas_image(self, img):
-        img_array = np.array(img)
+    def crop_to_content(self, img_array):
+        _, thresholded = cv2.threshold(img_array, 0, 255, cv2.THRESH_BINARY)
 
-        ink = np.where(img_array > 0)
-        if ink[0].size > 0 and ink[1].size > 0:
-            min_y, max_y = ink[0].min(), ink[0].max()
-            min_x, max_x = ink[1].min(), ink[1].max()
-            h, w = max_y - min_y + 1, max_x - min_x + 1
-            pad = int((PADDING / 100.0) * h)
-            min_y, max_y = max(min_y - pad, 0), min(max_y + pad, img_array.shape[0] - 1)
-            min_x, max_x = max(min_x - pad, 0), min(max_x + pad, img_array.shape[1] - 1)
-            cropped = img_array[min_y : max_y + 1, min_x : max_x + 1]
-        else:
-            cropped = img_array
+        pts = cv2.findNonZero(thresholded)
+        if pts is not None:
+            x, y, w, h = cv2.boundingRect(pts)
+            pad = int(max(w, h) * PADDING)
+            x0 = max(x - pad, 0)
+            y0 = max(y - pad, 0)
+            x1 = min(x + w + pad, img_array.shape[1])
+            y1 = min(y + h + pad, img_array.shape[0])
+            return img_array[y0:y1, x0:x1]
+        return img_array
 
+    def resize_and_rescale_stroke(self, cropped):
         h, w = cropped.shape
         scale = IMG_SIZE / max(h, w)
         new_h, new_w = int(h * scale), int(w * scale)
         resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
 
+        pen_width_scaled = INK_THICKNESS * scale
+        if pen_width_scaled > TARGET_STROKE * 1.5:
+            iterations = max(1, int((pen_width_scaled - TARGET_STROKE) / 2))
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+            resized = cv2.erode(resized, kernel, iterations=iterations)
+
+        return resized, new_h, new_w
+
+    def place_on_canvas(self, resized, new_h, new_w):
         final_img = np.zeros((IMG_SIZE, IMG_SIZE), dtype=np.uint8)
         y_off = (IMG_SIZE - new_h) // 2
         x_off = (IMG_SIZE - new_w) // 2
         final_img[y_off : y_off + new_h, x_off : x_off + new_w] = resized
+        return final_img
 
-        norm = cv2.normalize(
-            final_img, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX
-        )
+    def center_mass(self, img):
+        """Center the image based on center of mass of the ink pixels."""
+        coords = np.column_stack(np.where(img > 0))
+        if len(coords) == 0:
+            return img
+        cy, cx = coords.mean(axis=0)
+        dy, dx = int(IMG_SIZE / 2 - cy), int(IMG_SIZE / 2 - cx)
+        M = np.float32([[1, 0, dx], [0, 1, dy]])
+        return cv2.warpAffine(img, M, (IMG_SIZE, IMG_SIZE))
+
+    def normalize_and_sharpen(self, img):
+        norm = cv2.normalize(img, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
 
         lap_var = cv2.Laplacian(norm, cv2.CV_64F).var()
         if lap_var < LAPLACIAN_BLUR_THRESHOLD:
@@ -190,8 +209,16 @@ class HandwritingLiveApp(QWidget):
             norm = cv2.addWeighted(norm, SHARPEN_WEIGHT, blur, SHARPEN_BLUR_WEIGHT, 0)
 
         norm = np.clip(norm * BRIGHTNESS_MULTIPLIER, 0, 255).astype(np.uint8)
+        return norm
 
-        return Image.fromarray(norm)
+    def process_canvas_image(self, img):
+        img_array = np.array(img)
+        cropped = self.crop_to_content(img_array)
+        resized, new_h, new_w = self.resize_and_rescale_stroke(cropped)
+        on_canvas = self.place_on_canvas(resized, new_h, new_w)
+        centered = self.center_mass(on_canvas)
+        processed = self.normalize_and_sharpen(centered)
+        return Image.fromarray(processed)
 
     def setup_ui(self):
         # Canvas for drawing
