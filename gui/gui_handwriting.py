@@ -21,6 +21,7 @@ import numpy as np
 import cv2
 from serial import Serial
 from serial.tools import list_ports
+import tensorflow as tf
 
 IMG_SIZE = 32
 CANVAS_SIZE = 320
@@ -32,6 +33,7 @@ DEFAULT_STOPBITS = 1
 DEFAULT_PARITY = "N"
 DEFAULT_FLOWCONTROL = False
 DEFAULT_DATABITS = 8
+TEST_PER_DIGIT_COUNT = 10
 
 LAPLACIAN_BLUR_THRESHOLD = 3000
 GAUSSIAN_BLUR_SIGMA = 0.8
@@ -40,6 +42,7 @@ SHARPEN_BLUR_WEIGHT = -0.2
 BRIGHTNESS_MULTIPLIER = 1.1
 SERIAL_POLL_INTERVAL = 0.05
 TARGET_STROKE = 2.5
+
 
 class Canvas(QWidget):
     def __init__(self, parent=None):
@@ -145,12 +148,84 @@ class SerialReaderThread(QThread):
         self.running = False
 
 
+class AccuracyTestThread(QThread):
+    progress = Signal(str)
+    finished = Signal(float, float)
+
+    def __init__(self, serial_port, process_func):
+        super().__init__()
+        self.serial_port = serial_port
+        self.process_func = process_func
+        self.last_prediction = None
+        self.running = True
+        self.latencies = []
+        self.inter_image_delay = 2.0
+        self.device_latency = None
+
+    def run(self):
+        try:
+            (_, _), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+            indices_per_digit = [
+                np.where(y_test == d)[0][:TEST_PER_DIGIT_COUNT] for d in range(10)
+            ]
+            test_indices = np.concatenate(indices_per_digit)
+            np.random.shuffle(test_indices)
+
+            correct = 0
+            total = len(test_indices)
+
+            for i, idx in enumerate(test_indices):
+                if not self.running:
+                    break
+
+                img_array = x_test[idx]
+                img_array = cv2.resize(img_array, (IMG_SIZE, IMG_SIZE))
+                img = Image.fromarray(img_array, mode="L")
+                img_array = (np.array(img) - 128).astype(np.int8)
+                img_bytes = img_array.tobytes()
+
+                self.last_prediction = None
+                send_time = time.time()
+                self.serial_port.write(img_bytes)
+                self.serial_port.flush()
+
+                start_time = time.time()
+                while self.last_prediction is None and time.time() - start_time < 5:
+                    time.sleep(0.05)
+
+                if self.last_prediction is not None:
+                    if self.device_latency is not None:
+                        self.latencies.append(self.device_latency)
+                    if self.last_prediction == y_test[idx]:
+                        correct += 1
+
+                self.progress.emit(
+                    f"[{i+1}/{total}] Label: {y_test[idx]}, Pred: {self.last_prediction} (idx={idx})"
+                )
+
+                time.sleep(self.inter_image_delay)
+
+            accuracy = (correct / total) * 100
+            avg_latency = np.mean(self.latencies) if self.latencies else 0
+            self.finished.emit(accuracy, avg_latency)
+
+        except Exception as e:
+            self.progress.emit(f"Error: {str(e)}")
+
+    def on_prediction_received(self, prediction):
+        self.last_prediction = prediction
+
+    def stop(self):
+        self.running = False
+
+
 class HandwritingLiveApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Handwriting Live - MNIST Classifier")
         self.serial_port = None
         self.serial_thread = None
+        self.accuracy_test_thread = None
 
         self.setup_ui()
         self.populate_com_ports()
@@ -253,11 +328,16 @@ class HandwritingLiveApp(QWidget):
         self.send_button.clicked.connect(self.send_image)
         self.send_button.setEnabled(False)
 
-        self.clear_button = QPushButton("Clear")
+        self.clear_button = QPushButton("Clear Canvas")
         self.clear_button.clicked.connect(self.canvas.clear)
+
+        self.accuracy_button = QPushButton("Perform Accuracy Test")
+        self.accuracy_button.clicked.connect(self.start_accuracy_test)
+        self.accuracy_button.setEnabled(False)
 
         drawing_layout.addWidget(self.send_button)
         drawing_layout.addWidget(self.clear_button)
+        drawing_layout.addWidget(self.accuracy_button)
 
         # Messages display
         messages_group = QGroupBox("Received Messages")
@@ -335,6 +415,7 @@ class HandwritingLiveApp(QWidget):
 
             self.connect_button.setText("Disconnect")
             self.send_button.setEnabled(True)
+            self.accuracy_button.setEnabled(True)
             self.port_combo.setEnabled(False)
             self.baudrate_spin.setEnabled(False)
 
@@ -357,6 +438,7 @@ class HandwritingLiveApp(QWidget):
 
         self.connect_button.setText("Connect")
         self.send_button.setEnabled(False)
+        self.accuracy_button.setEnabled(False)
         self.port_combo.setEnabled(True)
         self.baudrate_spin.setEnabled(True)
 
@@ -394,12 +476,25 @@ class HandwritingLiveApp(QWidget):
             "Data received",
             "Data stats:",
             "Running classifier",
-            "Prediction: Digit",
             "Received 1024 bytes",
         ]
 
         if any(skip in message for skip in skip_messages):
             return
+
+        if "Prediction: Digit" in message and self.accuracy_test_thread:
+            try:
+                pred = int(message.split("Digit ")[1].split()[0])
+                self.accuracy_test_thread.on_prediction_received(pred)
+            except:
+                pass
+
+        if "Latency:" in message and self.accuracy_test_thread:
+            try:
+                latency_str = message.split("Latency:")[1].split("ms")[0].strip()
+                self.accuracy_test_thread.device_latency = float(latency_str)
+            except:
+                pass
 
         timestamp = time.strftime("%H:%M:%S")
         formatted_message = f"[{timestamp}] {message}"
@@ -412,7 +507,36 @@ class HandwritingLiveApp(QWidget):
     def clear_messages(self):
         self.messages_text.clear()
 
+    def start_accuracy_test(self):
+        if not self.serial_port or not self.serial_port.is_open:
+            QMessageBox.warning(self, "Warning", "Not connected to a COM port!")
+            return
+
+        self.send_button.setEnabled(False)
+        self.accuracy_button.setEnabled(False)
+        self.clear_messages()
+        self.display_message("Starting accuracy test...")
+
+        self.accuracy_test_thread = AccuracyTestThread(
+            self.serial_port, self.process_canvas_image
+        )
+        self.accuracy_test_thread.progress.connect(self.display_message)
+        self.accuracy_test_thread.finished.connect(self.on_accuracy_test_finished)
+        self.accuracy_test_thread.start()
+
+    def on_accuracy_test_finished(self, accuracy, avg_latency):
+        self.send_button.setEnabled(True)
+        self.accuracy_button.setEnabled(True)
+        msg = f"Total Accuracy: {accuracy:.2f}%\nAvg Latency: {avg_latency:.2f} ms"
+        QMessageBox.information(self, "Accuracy Test Complete", msg)
+        self.display_message(
+            f"Test Complete: {accuracy:.2f}% accuracy, {avg_latency:.2f} ms latency"
+        )
+
     def closeEvent(self, event):
+        if self.accuracy_test_thread:
+            self.accuracy_test_thread.stop()
+            self.accuracy_test_thread.wait()
         self.disconnect_from_port()
         event.accept()
 

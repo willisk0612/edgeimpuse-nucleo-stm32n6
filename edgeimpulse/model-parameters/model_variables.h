@@ -41,6 +41,7 @@
 
 #include <stdint.h>
 #include "model_metadata.h"
+#include "tflite-model/tflite_learn_785989_31.h"
 #include "edge-impulse-sdk/classifier/ei_model_types.h"
 #include "edge-impulse-sdk/classifier/inferencing_engines/engines.h"
 #include "edge-impulse-sdk/classifier/postprocessing/ei_postprocessing_common.h"
@@ -72,9 +73,11 @@ ei_model_dsp_t ei_dsp_blocks_785989_2[ei_dsp_blocks_785989_2_size] = {
         nullptr, // data normalization config
     }
 };
-const ei_config_aton_graph_t ei_config_graph_785989_31 = {
+const ei_config_tflite_graph_t ei_config_graph_785989_31 = {
     .implementation_version = 1,
-    .quant_type = EI_CLASSIFIER_DATATYPE_INT8
+    .model = tflite_learn_785989_31,
+    .model_size = tflite_learn_785989_31_len,
+    .arena_size = tflite_learn_785989_31_arena_size
 };
 
 const uint8_t ei_output_tensors_indices_785989_31[1] = { 0 };
@@ -133,7 +136,7 @@ const ei_impulse_t impulse_785989_2 = {
     .project_name = "Digits",
     .impulse_id = 2,
     .impulse_name = "Impulse #2",
-    .deploy_version = 11,
+    .deploy_version = 12,
 
     .nn_input_frame_size = 1024,
     .raw_sample_count = 1024,
@@ -156,7 +159,7 @@ const ei_impulse_t impulse_785989_2 = {
 
     .output_tensors_size = 1,
 
-    .inferencing_engine = EI_CLASSIFIER_ATON,
+    .inferencing_engine = EI_CLASSIFIER_TFLITE,
 
     .sensor = EI_CLASSIFIER_SENSOR_CAMERA,
     .fusion_string = "image",

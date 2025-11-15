@@ -9,7 +9,6 @@ for /f "delims=" %%i in ('where STM32_Programmer_CLI') do set PROGRAMMER_PATH=%%
 for %%i in ("%PROGRAMMER_PATH%") do set PROGRAMMER_DIR=%%~dpi
 
 set FLASH_FIRMWARE=firmware
-set FLASH_WEIGHTS=weights
 set FLASH_BOOTLOADER=bootloader
 set FLASH_ERASE=erase
 set FLASHER=STM32_Programmer_CLI
@@ -19,11 +18,10 @@ set TARGET=%1
 
 if not defined TARGET SET TARGET=all
 
-if "%TARGET%" NEQ "firmware" if "%TARGET%" NEQ "weights" if "%TARGET%" NEQ "bootloader" if "%TARGET%" NEQ "all" if "%TARGET%" NEQ "erase" goto INVALIDTARGET
+if "%TARGET%" NEQ "firmware" if "%TARGET%" NEQ "bootloader" if "%TARGET%" NEQ "all" if "%TARGET%" NEQ "erase" goto INVALIDTARGET
 
 echo Flashing %TARGET%
 
-IF "%TARGET%" == "%FLASH_WEIGHTS%" goto :FLASH_W
 IF "%TARGET%" == "%FLASH_BOOTLOADER%" goto :FLASH_B
 IF "%TARGET%" == "%FLASH_FIRMWARE%" goto :FLASH_F
 IF "%TARGET%" == "%FLASH_ERASE%" goto :FLASH_E
