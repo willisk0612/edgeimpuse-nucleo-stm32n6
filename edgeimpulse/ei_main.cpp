@@ -45,7 +45,6 @@
 #include "timer_config.h"
 #endif
 
-
 extern UART_HandleTypeDef hlpuart1;
 static int8_t received_image_buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
 
@@ -97,7 +96,11 @@ extern "C" void ei_classify_callback(uint8_t *image_data, uint32_t size)
   ei_impulse_result_t result = {nullptr};
 
   ei_printf("Running classifier...\n");
+  uint32_t start_cycles = DWT->CYCCNT;
   EI_IMPULSE_ERROR res = run_classifier(&signal, &result, false);
+  uint32_t end_cycles = DWT->CYCCNT;
+  uint32_t cycles = end_cycles - start_cycles;
+  float latency_ms = (float)cycles / (SystemCoreClock / 1000.0);
 
   if (res != 0)
   {
@@ -118,7 +121,7 @@ extern "C" void ei_classify_callback(uint8_t *image_data, uint32_t size)
   for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
     ei_printf("  %d: %.3f\n", ix, result.classification[ix].value);
 
-  char response[32];
-  sprintf(response, "Predicted: %d\r\n", predicted_digit);
+  char response[64];
+  sprintf(response, "Latency: %.3f ms\r\nPredicted: %d\r\n", latency_ms, predicted_digit);
   printf("%s", response);
 }
