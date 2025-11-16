@@ -20,9 +20,6 @@
 
 #include "app_config.h"
 #include "misc_toolbox.h"
-#ifndef TEST_CONNECTION_MODE
-#include "npu_cache.h" // Used in NPU_config
-#endif
 #include "stm32n6xx_ll_usart.h" // Used for configuring UART
 #include <stdio.h>
 
@@ -272,47 +269,6 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     // Restart interrupt-based reception
     HAL_UART_Receive_IT(huart, image_buffer, IMAGE_BUFFER_SIZE);
   }
-}
-
-void NPU_Config(void)
-{
-  // Enable NPU
-  __HAL_RCC_NPU_CLK_ENABLE();
-  __HAL_RCC_NPU_FORCE_RESET();
-  __HAL_RCC_NPU_RELEASE_RESET();
-
-  /* Enable NPU RAMs (4x448KB) */
-  __HAL_RCC_AXISRAM3_MEM_CLK_ENABLE();
-  __HAL_RCC_AXISRAM4_MEM_CLK_ENABLE();
-  __HAL_RCC_AXISRAM5_MEM_CLK_ENABLE();
-  __HAL_RCC_AXISRAM6_MEM_CLK_ENABLE();
-  __HAL_RCC_RAMCFG_CLK_ENABLE();
-
-  RAMCFG_HandleTypeDef hramcfg = {0};
-  hramcfg.Instance = RAMCFG_SRAM3_AXI;
-  HAL_RAMCFG_EnableAXISRAM(&hramcfg);
-  hramcfg.Instance = RAMCFG_SRAM4_AXI;
-  HAL_RAMCFG_EnableAXISRAM(&hramcfg);
-  hramcfg.Instance = RAMCFG_SRAM5_AXI;
-  HAL_RAMCFG_EnableAXISRAM(&hramcfg);
-  hramcfg.Instance = RAMCFG_SRAM6_AXI;
-  HAL_RAMCFG_EnableAXISRAM(&hramcfg);
-  npu_cache_init();
-
-#ifdef USE_NPU_CACHE
-  npu_cache_enable(); // Useless: already enabled by init
-#else
-  npu_cache_disable();
-#endif
-
-#if 0 // this is done in RISAF_Config
-  RIMC_MasterConfig_t master_conf;
-  /* Enable Secure access for NPU */
-  master_conf.MasterCID = RIF_CID_1;    // Master CID = 1
-  master_conf.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV; // Priviledged secure
-  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_NPU, &master_conf);
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_NPU, RIF_ATTRIBUTE_PRIV | RIF_ATTRIBUTE_SEC);
-#endif
 }
 
 void RISAF_Config(void)

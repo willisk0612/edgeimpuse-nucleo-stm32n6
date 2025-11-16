@@ -40,9 +40,6 @@ void MPU_Config(void);
 void SystemIsolation_Config(void);
 void Error_Handler(void);
 
-// Configures the NPU: Activates clocks, activate cache and setup AXI bus Master/Slave
-void NPU_Config(void);
-
 // Configures the RISAFs: Everything that is used is set to "passthrough"
 void RISAF_Config(void);
 

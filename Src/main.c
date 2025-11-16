@@ -26,9 +26,6 @@
 #include "misc_toolbox.h"
 #include "stm32n6xx_nucleo.h"
 #include "system_clock_config.h"
-#ifndef TEST_CONNECTION_MODE
-#include "npu_cache.h"
-#endif
 #include <stdio.h>
 #if defined(USE_NS_TIMER) && (USE_NS_TIMER == 1)
 #include "timer_config.h"
@@ -98,10 +95,6 @@ int main(void)
   SystemClock_Config_HSI_overdrive();
 #else
   SystemClock_Config_HSI_no_overdrive();
-#endif
-
-#ifndef TEST_CONNECTION_MODE
-  NPU_Config();
 #endif
 
 #if defined(USE_NS_TIMER) && (USE_NS_TIMER == 1)

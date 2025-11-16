@@ -46,7 +46,7 @@
 #endif
 
 extern UART_HandleTypeDef hlpuart1;
-static int8_t received_image_buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
+static uint8_t received_image_buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
 
 // Gets data for the classifier from the received image buffer
 static int received_feature_get_data(size_t offset, size_t length, float *out_ptr)
@@ -56,8 +56,15 @@ static int received_feature_get_data(size_t offset, size_t length, float *out_pt
     return EIDSP_OUT_OF_BOUNDS;
   }
 
-  int8_t *out_ptr_i8 = reinterpret_cast<int8_t *>(out_ptr);
-  memcpy(out_ptr_i8, received_image_buffer + offset, length * sizeof(int8_t));
+  for (size_t i = 0; i < length; i++)
+  {
+    uint8_t g = received_image_buffer[offset + i];
+    uint32_t pixel = (static_cast<uint32_t>(g) << 16) |
+                     (static_cast<uint32_t>(g) << 8) |
+                     static_cast<uint32_t>(g);
+    out_ptr[i] = static_cast<float>(pixel);
+  }
+
   return 0;
 }
 

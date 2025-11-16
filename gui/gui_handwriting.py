@@ -33,7 +33,7 @@ DEFAULT_STOPBITS = 1
 DEFAULT_PARITY = "N"
 DEFAULT_FLOWCONTROL = False
 DEFAULT_DATABITS = 8
-TEST_PER_DIGIT_COUNT = 10
+TEST_PER_DIGIT_COUNT = 1
 
 LAPLACIAN_BLUR_THRESHOLD = 3000
 GAUSSIAN_BLUR_SIGMA = 0.8
@@ -178,10 +178,11 @@ class AccuracyTestThread(QThread):
                 if not self.running:
                     break
 
+                # MNIST digits are already normalized; just resize to the model's input size
                 img_array = x_test[idx]
                 img_array = cv2.resize(img_array, (IMG_SIZE, IMG_SIZE))
                 img = Image.fromarray(img_array, mode="L")
-                img_array = (np.array(img) - 128).astype(np.int8)
+                img_array = np.array(img, dtype=np.uint8)
                 img_bytes = img_array.tobytes()
 
                 self.last_prediction = None
@@ -458,12 +459,11 @@ class HandwritingLiveApp(QWidget):
         img = self.process_canvas_image(img)
 
         try:
-            img_array = np.array(img)
+            img_array = np.array(img, dtype=np.uint8)
             if img_array.shape != (IMG_SIZE, IMG_SIZE):
                 raise ValueError(f"Image size mismatch: {img_array.shape}")
 
-            img_array_int8 = (img_array - 128).astype(np.int8)
-            img_bytes = img_array_int8.tobytes()
+            img_bytes = img_array.tobytes()
 
             self.serial_port.write(img_bytes)
             self.serial_port.flush()

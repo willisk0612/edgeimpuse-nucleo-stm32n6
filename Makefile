@@ -27,10 +27,6 @@ rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(su
 ######################################
 TARGET = Project
 REV_BOARD = C01
-
-MODEL_DIR = Model
-BINARY_DIR = Binary
-
 ######################################
 # building variables
 ######################################
@@ -53,9 +49,6 @@ C_SOURCES += Src/misc_toolbox.c
 C_SOURCES += Src/system_clock_config.c
 C_SOURCES += Src/sysmem.c
 C_SOURCES += Src/timer_config.c
-ifneq ($(TEST_CONNECTION), 1)
-C_SOURCES += Model/network.c
-endif
 
 # ASM sources
 ASM_SOURCES =
@@ -166,7 +159,6 @@ ifeq ($(TEST_CONNECTION), 1)
     C_DEFS += -DTEST_CONNECTION_MODE
 else
     include mks/ei.mk
-    include mks/ai.mk
 endif
 include mks/fw.mk
 include mks/gcc.mk
@@ -242,9 +234,6 @@ flash: $(BUILD_DIR)/$(TARGET).bin
 flash_sign: $(BUILD_DIR)/$(TARGET)_sign.bin
 	@$(FLASHER) -c port=SWD mode=HOTPLUG ap=1 -el $(EL) -hardRst -w $< 0x70080000
 	@echo FLASH $<
-
-flash_weights: $(MODEL_DIR)/network_data.hex
-	$(FLASHER) -c port=SWD mode=HOTPLUG ap=1 -el $(EL) -hardRst -w $<
 
 #######################################
 # dependencies
