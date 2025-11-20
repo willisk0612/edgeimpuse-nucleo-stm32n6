@@ -22,7 +22,7 @@
 
 #define VDDCORE_OVERDRIVE               1               // Use Overdrive mode (quick clocks) or not (normal clocks)
 
-#define USE_UART_BAUDRATE               9600
+#define USE_UART_BAUDRATE               115200
 #define USE_EXTERNAL_MEMORY_DEVICES     1
 
 #define USE_NPU_CACHE           // Used to open RISAFs for the NPU cache

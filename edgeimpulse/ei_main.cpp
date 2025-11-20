@@ -45,11 +45,19 @@
 #include "timer_config.h"
 #endif
 
+#ifndef EI_INPUT_SCALE
+#define EI_INPUT_SCALE 0.03975987f
+#endif
+
+#ifndef EI_INPUT_ZP
+#define EI_INPUT_ZP    -4
+#endif
+
 
 extern UART_HandleTypeDef hlpuart1;
-static int8_t received_image_buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
+static uint8_t received_data_buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
 
-// Gets data for the classifier from the received image buffer
+// Gets data for the classifier from the received data buffer
 static int received_feature_get_data(size_t offset, size_t length, float *out_ptr)
 {
   if (offset + length > EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE)
@@ -57,8 +65,13 @@ static int received_feature_get_data(size_t offset, size_t length, float *out_pt
     return EIDSP_OUT_OF_BOUNDS;
   }
 
-  int8_t *out_ptr_i8 = reinterpret_cast<int8_t *>(out_ptr);
-  memcpy(out_ptr_i8, received_image_buffer + offset, length * sizeof(int8_t));
+  for (size_t i = 0; i < length; i++)
+  {
+    int8_t q = static_cast<int8_t>(received_data_buffer[offset + i]);
+    float x_norm = (static_cast<float>(q) - static_cast<float>(EI_INPUT_ZP)) * EI_INPUT_SCALE;
+    out_ptr[i] = x_norm;
+  }
+
   return 0;
 }
 
@@ -77,18 +90,24 @@ extern "C" int ei_main(void)
   }
 }
 
-extern "C" void ei_classify_callback(uint8_t *image_data, uint32_t size)
+extern "C" void ei_classify_callback(uint8_t *data, uint32_t size)
 {
-  if (image_data == nullptr || size != EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE)
+  if (data == nullptr || size != EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE)
   {
-    ei_printf("ERROR: Invalid image size (expected %d, got %lu)\n",
+    ei_printf("ERROR: Invalid data size (expected %d, got %lu)\n",
               EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE, size);
     const char *errorMsg = "Classification failed\r\n";
     printf("%s", errorMsg);
     return;
   }
 
-  memcpy(received_image_buffer, image_data, size);
+  // Debug: echo first three quantized samples (signed int8) back to sender
+  int8_t qx = static_cast<int8_t>(data[0]);
+  int8_t qy = static_cast<int8_t>(data[1]);
+  int8_t qz = static_cast<int8_t>(data[2]);
+  ei_printf("Received q_x: %d, q_y: %d, q_z: %d\n", qx, qy, qz);
+
+  memcpy(received_data_buffer, data, size);
 
   signal_t signal;
   signal.total_length = EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE;
@@ -107,18 +126,16 @@ extern "C" void ei_classify_callback(uint8_t *image_data, uint32_t size)
     return;
   }
 
-  int predicted_digit = 0;
-  for (size_t ix = 1; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
-    if (result.classification[ix].value > result.classification[predicted_digit].value)
-      predicted_digit = ix;
+  const char *label = result.classification[0].label;
+  if (label == nullptr)
+  {
+    label = "value";
+  }
+  float value = result.classification[0].value;
 
-  ei_printf("Prediction: Digit %d (confidence: %.3f)\n", predicted_digit, result.classification[predicted_digit].value);
+  ei_printf("Regression output [%s]: %.3f\n", label, value);
 
-  ei_printf("All probabilities:\n");
-  for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
-    ei_printf("  %d: %.3f\n", ix, result.classification[ix].value);
-
-  char response[32];
-  sprintf(response, "Predicted: %d\r\n", predicted_digit);
+  char response[64];
+  sprintf(response, "%s: %.3f\r\n", label, value);
   printf("%s", response);
 }

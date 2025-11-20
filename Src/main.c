@@ -30,6 +30,7 @@
 #include "npu_cache.h"
 #endif
 #include <stdio.h>
+#include "model-parameters/model_metadata.h"
 #if defined(USE_NS_TIMER) && (USE_NS_TIMER == 1)
 #include "timer_config.h"
 #endif
@@ -38,7 +39,7 @@ static void init_external_memories(void);
 extern int ei_main(void);
 extern void ei_classify_callback(uint8_t *image_data, uint32_t size);
 
-#define IMAGE_BUFFER_SIZE 1024U
+#define IMAGE_BUFFER_SIZE EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE
 #define LED_BLINK_INTERVAL_MS 50U
 
 extern uint8_t image_buffer[];
@@ -57,11 +58,118 @@ void LED_BLUE_Blink(void)
 
 void ProcessUartReception(void)
 {
-  /* Consume continuous UART stream in 1,024-byte frames */
-  if (UART_RingBuffer_Available() >= IMAGE_BUFFER_SIZE)
+  /* Parse framed UART stream: [0xAA][0x55][0x01][seq_lo][seq_hi][len_lo][len_hi][payload...] */
+  enum
   {
-    (void)UART_RingBuffer_Read(image_buffer, IMAGE_BUFFER_SIZE);
-    ei_classify_callback(image_buffer, IMAGE_BUFFER_SIZE);
+    UART_STATE_SYNC0 = 0,
+    UART_STATE_SYNC1,
+    UART_STATE_TYPE,
+    UART_STATE_SEQ_LO,
+    UART_STATE_SEQ_HI,
+    UART_STATE_LEN_LO,
+    UART_STATE_LEN_HI,
+    UART_STATE_PAYLOAD
+  };
+
+  static uint8_t  state      = UART_STATE_SYNC0;
+  static uint16_t payload_len = 0U;
+  static uint16_t payload_idx = 0U;
+  static uint8_t  frame_buf[7U + IMAGE_BUFFER_SIZE];
+
+  while (UART_RingBuffer_Available() > 0U)
+  {
+    uint8_t byte = 0U;
+    (void)UART_RingBuffer_Read(&byte, 1U);
+
+    switch (state)
+    {
+    case UART_STATE_SYNC0:
+      if (byte == 0xAA)
+      {
+        frame_buf[0] = byte;
+        state = UART_STATE_SYNC1;
+      }
+      break;
+
+    case UART_STATE_SYNC1:
+      if (byte == 0x55)
+      {
+        frame_buf[1] = byte;
+        state = UART_STATE_TYPE;
+      }
+      else
+      {
+        state = UART_STATE_SYNC0;
+      }
+      break;
+
+    case UART_STATE_TYPE:
+      if (byte == 0x01)
+      {
+        frame_buf[2] = byte;
+        state = UART_STATE_SEQ_LO;
+      }
+      else
+      {
+        state = UART_STATE_SYNC0;
+      }
+      break;
+
+    case UART_STATE_SEQ_LO:
+      frame_buf[3] = byte; /* seq_lo */
+      state = UART_STATE_SEQ_HI;
+      break;
+
+    case UART_STATE_SEQ_HI:
+      frame_buf[4] = byte; /* seq_hi */
+      state = UART_STATE_LEN_LO;
+      break;
+
+    case UART_STATE_LEN_LO:
+      frame_buf[5] = byte;
+      payload_len = (uint16_t)byte;
+      state = UART_STATE_LEN_HI;
+      break;
+
+    case UART_STATE_LEN_HI:
+      frame_buf[6] = byte;
+      payload_len |= ((uint16_t)byte << 8);
+
+      if (payload_len == IMAGE_BUFFER_SIZE && payload_len <= IMAGE_BUFFER_SIZE)
+      {
+        payload_idx = 0U;
+        state = UART_STATE_PAYLOAD;
+      }
+      else
+      {
+        /* Invalid length, resync */
+        payload_len = 0U;
+        state = UART_STATE_SYNC0;
+      }
+      break;
+
+    case UART_STATE_PAYLOAD:
+      if (payload_idx < IMAGE_BUFFER_SIZE)
+      {
+        image_buffer[payload_idx++] = byte;
+      }
+
+      if (payload_idx >= payload_len)
+      {
+        /* Full payload received, classify */
+        ei_classify_callback(image_buffer, payload_len);
+        state = UART_STATE_SYNC0;
+        payload_len = 0U;
+        payload_idx = 0U;
+      }
+      break;
+
+    default:
+      state = UART_STATE_SYNC0;
+      payload_len = 0U;
+      payload_idx = 0U;
+      break;
+    }
   }
 }
 

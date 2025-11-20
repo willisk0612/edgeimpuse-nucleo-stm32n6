@@ -25,6 +25,7 @@
 #endif
 #include "stm32n6xx_ll_usart.h" // Used for configuring UART
 #include <stdio.h>
+#include "model-parameters/model_metadata.h"
 
 UART_HandleTypeDef hlpuart1;
 
@@ -38,7 +39,7 @@ static volatile uint32_t uart_rx_tail = 0; // Main reads
 static uint8_t uart_rx_chunk[UART_RX_CHUNK_SIZE];
 
 /* Legacy image buffer symbol used by main for classification */
-#define IMAGE_BUFFER_SIZE (32 * 32)
+#define IMAGE_BUFFER_SIZE EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE
 __attribute__((aligned(32)))
 uint8_t image_buffer[IMAGE_BUFFER_SIZE];
 
