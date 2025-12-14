@@ -152,6 +152,8 @@ LDFLAGS = $(MCU) -specs=nano.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) $(LDFLAGS_OTH
 LDFLAGS_OTHERS += -u _printf_float
 # Avoid 'build/Project.elf has a LOAD segment with RWX permissions' warning
 LDFLAGS_OTHERS += -Wl,--no-warn-rwx-segments
+# Ensure linker warnings do not fail the build (some environments enable --fatal-warnings)
+LDFLAGS_OTHERS += -Wl,--no-fatal-warnings
 LDFLAGS += -Wl,--print-memory-usage
 
 # default action: build all

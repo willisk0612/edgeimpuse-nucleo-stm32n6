@@ -38,14 +38,13 @@
 
 /* Include ----------------------------------------------------------------- */
 #include "edge-impulse-sdk/tensorflow/lite/kernels/custom/tree_ensemble_classifier.h"
+#include <math.h>
 #include "edge-impulse-sdk/classifier/ei_model_types.h"
 #include "edge-impulse-sdk/classifier/ei_run_dsp.h"
 #include "edge-impulse-sdk/porting/ei_logging.h"
 
 #include "ll_aton_runtime.h"
-#include "ll_aton_NN_interface.h"
 #include "app_config.h"
-#include <math.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -85,7 +84,7 @@ EI_IMPULSE_ERROR run_nn_inference_image_quantized(
     #endif
     static uint32_t nn_out_len;
 
-    if(first_run == true) {
+    if (first_run == true) {
 
         nn_in_info = LL_ATON_Input_Buffers_Info_Default();
         nn_out_info = LL_ATON_Output_Buffers_Info_Default();
@@ -120,6 +119,9 @@ EI_IMPULSE_ERROR run_nn_inference_image_quantized(
     #endif
 
     result->timing.classification_us = ei_read_timer_us() - ctx_start_us;
+    if (result->timing.classification_us) {
+        result->timing.classification = result->timing.classification_us / 1000;
+    }
 
     size_t output_size = nn_out_len;
 
@@ -173,204 +175,110 @@ EI_IMPULSE_ERROR run_nn_inference(
     void *config_ptr,
     bool debug = false)
 {
-    (void)debug;
+    ei_learning_block_config_tflite_graph_t *block_config = (ei_learning_block_config_tflite_graph_t*)config_ptr;
+    ei_config_aton_graph_t *graph_config = (ei_config_aton_graph_t*)block_config->graph_config;
 
-    if (!impulse || !fmatrix || !result || !config_ptr) {
-        return EI_IMPULSE_INFERENCE_ERROR;
-    }
-
-    ei_learning_block_config_tflite_graph_t *block_config =
-        (ei_learning_block_config_tflite_graph_t*)config_ptr;
-    ei_config_aton_graph_t *graph_config =
-        (ei_config_aton_graph_t*)block_config->graph_config;
-
-    if (input_block_ids_size == 0) {
-        ei_printf("ERR: ATON: input_block_ids_size == 0\n");
-        return EI_IMPULSE_INFERENCE_ERROR;
-    }
-
-    /* For now we only support a single DSP input block per learning block.
-     * This matches the current autoencoder impulse (one RAW block feeding one NN block).
-     */
-    uint32_t first_block_id = input_block_ids[0];
-
-    /* Find the index of the DSP block that produces this block_id,
-     * so we can pick the right feature matrix from fmatrix[].
-     */
-    size_t dsp_index = impulse->dsp_blocks_size;
-    for (size_t i = 0; i < impulse->dsp_blocks_size; i++) {
-        if (impulse->dsp_blocks[i].blockId == first_block_id) {
-            dsp_index = i;
-            break;
-        }
-    }
-
-    if (dsp_index >= impulse->dsp_blocks_size) {
-        ei_printf("ERR: ATON: could not find DSP block for id %lu\n",
-                  (unsigned long)first_block_id);
-        return EI_IMPULSE_DSP_ERROR;
-    }
-
-    if (fmatrix[dsp_index].matrix == nullptr ||
-        fmatrix[dsp_index].matrix->buffer == nullptr) {
-        ei_printf("ERR: ATON: feature matrix for DSP index %lu is NULL\n",
-                  (unsigned long)dsp_index);
-        return EI_IMPULSE_DSP_ERROR;
-    }
-
-    ei::matrix_t *input_matrix = fmatrix[dsp_index].matrix;
-    size_t input_len = impulse->nn_input_frame_size;
-    if (input_matrix->rows * input_matrix->cols < input_len) {
-        ei_printf("ERR: ATON: feature matrix too small (%lu < %lu)\n",
-                  (unsigned long)(input_matrix->rows * input_matrix->cols),
-                  (unsigned long)input_len);
-        return EI_IMPULSE_DSP_ERROR;
-    }
-
-    /* Lazy one-time init of NPU input/output buffer descriptors */
+    // this needs to be changed for multi-model, multi-impulse
     static bool first_run = true;
-    static uint32_t nn_in_len = 0;
-    static uint32_t nn_out_len = 0;
 
-    if (first_run) {
+    uint64_t ctx_start_us = ei_read_timer_us();
+
+    #if DATA_OUT_FORMAT_FLOAT32
+    static float32_t *nn_out;
+    #else
+    static uint8_t *nn_out;
+    #endif
+    static uint32_t nn_out_len;
+
+    if (first_run == true) {
+
         nn_in_info = LL_ATON_Input_Buffers_Info_Default();
         nn_out_info = LL_ATON_Output_Buffers_Info_Default();
 
-        if (nn_in_info == NULL || nn_out_info == NULL ||
-            nn_in_info[0].name == NULL || nn_out_info[0].name == NULL) {
-            ei_printf("ERR: ATON: invalid buffer info\n");
-            return EI_IMPULSE_INFERENCE_ERROR;
-        }
+        nn_in = (uint8_t *) LL_Buffer_addr_start(&nn_in_info[0]);
+        uint32_t nn_in_len = LL_Buffer_len(&nn_in_info[0]);
 
-        nn_in = (uint8_t*)LL_Buffer_addr_start(&nn_in_info[0]);
-        nn_out = (uint8_t*)LL_Buffer_addr_start(&nn_out_info[0]);
-
-        nn_in_len = LL_Buffer_len(&nn_in_info[0]);
+        #if DATA_OUT_FORMAT_FLOAT32
+        nn_out = (float32_t *) nn_out_info[0].addr_base.p;
+        #else
+        nn_out = (uint8_t *) LL_Buffer_addr_start(&nn_out_info[0]);
+        #endif
         nn_out_len = LL_Buffer_len(&nn_out_info[0]);
-
-        if (nn_in_len < input_len) {
-            ei_printf("ERR: ATON: NPU input buffer too small (%lu < %lu)\n",
-                      (unsigned long)nn_in_len,
-                      (unsigned long)input_len);
-            return EI_IMPULSE_INFERENCE_ERROR;
-        }
 
         first_run = false;
     }
 
-    const LL_Buffer_InfoTypeDef *in_buf = &nn_in_info[0];
+    // fill input
+    ei::matrix_t* matrix = fmatrix[0].matrix;
+    size_t mtx_size = impulse->dsp_blocks_size + impulse->learning_blocks_size;
+    for (size_t i = 0; i < input_block_ids_size; i++) {
+#if EI_CLASSIFIER_SINGLE_FEATURE_INPUT == 0
+        uint16_t cur_mtx = input_block_ids[i];
+        ei::matrix_t* matrix = NULL;
 
-    /* Quantize float features -> NPU input buffer when needed */
-    if (in_buf->type == DataType_FLOAT) {
-        /* Native float input: just copy */
-        float *nn_in_f32 = (float*)nn_in;
-        for (size_t i = 0; i < input_len; i++) {
-            nn_in_f32[i] = input_matrix->buffer[i];
+        if (!find_mtx_by_idx(fmatrix, &matrix, cur_mtx, mtx_size)) {
+            ei_printf("ERR: Cannot find matrix with id %zu\n", cur_mtx);
+            return EI_IMPULSE_INVALID_SIZE;
         }
-    }
-    else {
-        /* Assume symmetric quantized input (INT8/UINT8) with scale/offset.
-         * Convert: q = round(x / scale + offset), clamped to valid range.
-         */
-        float scale = 1.0f;
-        int offset = 0;
-        if (in_buf->scale != NULL) {
-            scale = in_buf->scale[0];
-        }
-        if (in_buf->offset != NULL) {
-            offset = in_buf->offset[0];
-        }
-
-        int bits = (int)LL_Buffer_bits(in_buf);
-        if (bits <= 0 || bits > 16) {
-            ei_printf("ERR: ATON: unsupported input bit width %d\n", bits);
-            return EI_IMPULSE_INFERENCE_ERROR;
-        }
-
-        int is_unsigned = in_buf->Qunsigned != 0;
-        int32_t q_min, q_max;
-        if (is_unsigned) {
-            q_min = 0;
-            q_max = (1 << bits) - 1;
-        }
-        else {
-            q_min = -(1 << (bits - 1));
-            q_max =  (1 << (bits - 1)) - 1;
-        }
-
-        if (scale == 0.0f) {
-            ei_printf("ERR: ATON: input scale is zero\n");
-            return EI_IMPULSE_INFERENCE_ERROR;
-        }
-
-        for (size_t i = 0; i < input_len; i++) {
-            float x = input_matrix->buffer[i];
-            float q_f = (x / scale) + (float)offset;
-            int32_t q = (int32_t)roundf(q_f);
-
-            if (q < q_min) q = q_min;
-            if (q > q_max) q = q_max;
-
-            nn_in[i] = (uint8_t)q;
-        }
-    }
-
-#ifdef USE_DCACHE
-    SCB_CleanInvalidateDCache_by_Addr(nn_in, nn_in_len);
+#else
+        ei::matrix_t* matrix = fmatrix[0].matrix;
 #endif
 
-    uint64_t ctx_start_us = ei_read_timer_us();
+    }
+    // copy rescale the input features to int8 and copy to input buffer
+    size_t matrix_els = matrix->rows * matrix->cols;
+    const float inv_input_scale = 1.0f / graph_config->input_scale;
+    const float input_zp = (float)graph_config->input_zeropoint;
+    for (size_t ix = 0; ix < matrix_els; ix++) {
+        int32_t q = (int32_t)lrintf((matrix->buffer[ix] * inv_input_scale) + input_zp);
+        if (q < -128) q = -128;
+        if (q > 127) q = 127;
+        nn_in[ix] = (int8_t)q;
+    }
+
+    #ifdef USE_DCACHE
+    SCB_CleanInvalidateDCache_by_Addr(nn_in, impulse->nn_input_frame_size);
+    #endif
 
     LL_ATON_RT_Main(&NN_Instance_Default);
 
-#ifdef USE_DCACHE
     /* Discard all nn_out regions to avoid Dcache evictions during nn inference */
+    #ifdef USE_DCACHE
     int i = 0;
     while (nn_out_info[i].name != NULL) {
-        SCB_InvalidateDCache_by_Addr(
-            (float32_t *)LL_Buffer_addr_start(&nn_out_info[i]),
-            LL_Buffer_len(&nn_out_info[i]));
-        i++;
+            SCB_InvalidateDCache_by_Addr((float32_t *) LL_Buffer_addr_start(&nn_out_info[i]), LL_Buffer_len(&nn_out_info[i]));
+            i++;
     }
-#endif
+    #endif
 
     result->timing.classification_us = ei_read_timer_us() - ctx_start_us;
-
-    size_t output_size = nn_out_len;
-
-    /* Allocate and fill raw output tensor in the format expected by
-     * the Edge Impulse post-processing pipeline.
-     */
-    switch (graph_config->quant_type) {
-        case EI_CLASSIFIER_DATATYPE_FLOAT32: {
-            result->_raw_outputs[learn_block_index].matrix =
-                new matrix_t(1, output_size);
-            memcpy(result->_raw_outputs[learn_block_index].matrix->buffer,
-                   (float *)nn_out, output_size * sizeof(float));
-            break;
-        }
-        case EI_CLASSIFIER_DATATYPE_INT8: {
-            result->_raw_outputs[learn_block_index].matrix_i8 =
-                new matrix_i8_t(1, output_size);
-            memcpy(result->_raw_outputs[learn_block_index].matrix_i8->buffer,
-                   (int8_t *)nn_out, output_size * sizeof(int8_t));
-            break;
-        }
-        case EI_CLASSIFIER_DATATYPE_UINT8: {
-            result->_raw_outputs[learn_block_index].matrix_u8 =
-                new matrix_u8_t(1, output_size);
-            memcpy(result->_raw_outputs[learn_block_index].matrix_u8->buffer,
-                   (uint8_t *)nn_out, output_size * sizeof(uint8_t));
-            break;
-        }
-        default: {
-            ei_printf("ERR: ATON: unsupported output quant type %d\n",
-                      (int)graph_config->quant_type);
-            return EI_IMPULSE_OUTPUT_TENSOR_WAS_NULL;
-        }
+    if (result->timing.classification_us) {
+        result->timing.classification = result->timing.classification_us / 1000;
     }
 
-    result->_raw_outputs[learn_block_index].blockId = block_config->block_id;
+    // fill output
+    for (uint32_t output_ix = 0; output_ix < block_config->output_tensors_size; output_ix++) {
+
+        size_t output_size = nn_out_len;
+        switch (graph_config->quant_type) {
+            case kTfLiteInt8: {
+                    result->_raw_outputs[learn_block_index + output_ix].matrix_i8 = new matrix_i8_t(1, output_size);
+                    memcpy(result->_raw_outputs[learn_block_index + output_ix].matrix_i8->buffer, (int8_t *)nn_out, output_size * sizeof(int8_t));
+            }
+            break;
+            case kTfLiteUInt8: {
+                result->_raw_outputs[learn_block_index].matrix_u8 = new matrix_u8_t(1, output_size);
+                memcpy(result->_raw_outputs[learn_block_index].matrix_u8->buffer, (uint8_t *)nn_out, output_size * sizeof(uint8_t));
+            }
+            break;
+            default: {
+                ei_printf("ERR: Cannot handle output type (%d)\n", graph_config->quant_type);
+                return EI_IMPULSE_OUTPUT_TENSOR_WAS_NULL;
+            }
+        }
+
+        result->_raw_outputs[learn_block_index].blockId = block_config->block_id;
+    }
 
     return EI_IMPULSE_OK;
 }

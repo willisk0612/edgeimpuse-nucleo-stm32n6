@@ -30,8 +30,8 @@
 UART_HandleTypeDef hlpuart1;
 
 // UART stream reception ring buffer, implemented with FIFO and ReceiveToIdle interrupt mode
-#define UART_RX_RING_BUFFER_SIZE   (4096U)
-#define UART_RX_CHUNK_SIZE         (256U)
+#define UART_RX_RING_BUFFER_SIZE   (32768U)
+#define UART_RX_CHUNK_SIZE         (1024U)
 
 static uint8_t uart_rx_ring[UART_RX_RING_BUFFER_SIZE];
 static volatile uint32_t uart_rx_head = 0; // ISR writes

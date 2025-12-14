@@ -74,101 +74,116 @@ void ProcessUartReception(void)
   static uint8_t  state      = UART_STATE_SYNC0;
   static uint16_t payload_len = 0U;
   static uint16_t payload_idx = 0U;
-  static uint8_t  frame_buf[7U + IMAGE_BUFFER_SIZE];
+  uint8_t rx_block[512];
 
   while (UART_RingBuffer_Available() > 0U)
   {
-    uint8_t byte = 0U;
-    (void)UART_RingBuffer_Read(&byte, 1U);
-
-    switch (state)
+    uint32_t to_read = UART_RingBuffer_Available();
+    if (to_read > (uint32_t)sizeof(rx_block))
     {
-    case UART_STATE_SYNC0:
-      if (byte == 0xAA)
-      {
-        frame_buf[0] = byte;
-        state = UART_STATE_SYNC1;
-      }
-      break;
+      to_read = (uint32_t)sizeof(rx_block);
+    }
 
-    case UART_STATE_SYNC1:
-      if (byte == 0x55)
+    uint32_t got = UART_RingBuffer_Read(rx_block, to_read);
+    if (got == 0U)
+    {
+      break;
+    }
+
+    for (uint32_t n = 0U; n < got; n++)
+    {
+      uint8_t byte = rx_block[n];
+
+      switch (state)
       {
-        frame_buf[1] = byte;
-        state = UART_STATE_TYPE;
-      }
-      else
-      {
+      case UART_STATE_SYNC0:
+        if (byte == 0xAA)
+        {
+          state = UART_STATE_SYNC1;
+        }
+        break;
+
+      case UART_STATE_SYNC1:
+        if (byte == 0x55)
+        {
+          state = UART_STATE_TYPE;
+        }
+        else
+        {
+          state = UART_STATE_SYNC0;
+        }
+        break;
+
+      case UART_STATE_TYPE:
+        if (byte == 0x01)
+        {
+          state = UART_STATE_SEQ_LO;
+        }
+        else
+        {
+          state = UART_STATE_SYNC0;
+        }
+        break;
+
+      case UART_STATE_SEQ_LO:
+        state = UART_STATE_SEQ_HI;
+        break;
+
+      case UART_STATE_SEQ_HI:
+        state = UART_STATE_LEN_LO;
+        break;
+
+      case UART_STATE_LEN_LO:
+        payload_len = (uint16_t)byte;
+        state = UART_STATE_LEN_HI;
+        break;
+
+      case UART_STATE_LEN_HI:
+        payload_len |= ((uint16_t)byte << 8);
+
+        if (payload_len == IMAGE_BUFFER_SIZE)
+        {
+          payload_idx = 0U;
+          state = UART_STATE_PAYLOAD;
+        }
+        else
+        {
+          /* Invalid length, resync */
+          payload_len = 0U;
+          state = UART_STATE_SYNC0;
+        }
+        break;
+
+      case UART_STATE_PAYLOAD:
+        if (payload_idx < IMAGE_BUFFER_SIZE)
+        {
+          image_buffer[payload_idx++] = byte;
+        }
+        else
+        {
+          /* Overflow, resync */
+          state = UART_STATE_SYNC0;
+          payload_len = 0U;
+          payload_idx = 0U;
+          break;
+        }
+
+        if (payload_idx >= payload_len)
+        {
+          /* Full payload received, classify */
+          ei_classify_callback(image_buffer, payload_len);
+          state = UART_STATE_SYNC0;
+          payload_len = 0U;
+          payload_idx = 0U;
+        }
+        break;
+
+      default:
         state = UART_STATE_SYNC0;
-      }
-      break;
-
-    case UART_STATE_TYPE:
-      if (byte == 0x01)
-      {
-        frame_buf[2] = byte;
-        state = UART_STATE_SEQ_LO;
-      }
-      else
-      {
-        state = UART_STATE_SYNC0;
-      }
-      break;
-
-    case UART_STATE_SEQ_LO:
-      frame_buf[3] = byte; /* seq_lo */
-      state = UART_STATE_SEQ_HI;
-      break;
-
-    case UART_STATE_SEQ_HI:
-      frame_buf[4] = byte; /* seq_hi */
-      state = UART_STATE_LEN_LO;
-      break;
-
-    case UART_STATE_LEN_LO:
-      frame_buf[5] = byte;
-      payload_len = (uint16_t)byte;
-      state = UART_STATE_LEN_HI;
-      break;
-
-    case UART_STATE_LEN_HI:
-      frame_buf[6] = byte;
-      payload_len |= ((uint16_t)byte << 8);
-
-      if (payload_len == IMAGE_BUFFER_SIZE && payload_len <= IMAGE_BUFFER_SIZE)
-      {
-        payload_idx = 0U;
-        state = UART_STATE_PAYLOAD;
-      }
-      else
-      {
-        /* Invalid length, resync */
         payload_len = 0U;
-        state = UART_STATE_SYNC0;
-      }
-      break;
-
-    case UART_STATE_PAYLOAD:
-      if (payload_idx < IMAGE_BUFFER_SIZE)
-      {
-        image_buffer[payload_idx++] = byte;
-      }
-
-      if (payload_idx >= payload_len)
-      {
-        /* Full payload received, classify */
-        ei_classify_callback(image_buffer, payload_len);
-        state = UART_STATE_SYNC0;
-        payload_len = 0U;
         payload_idx = 0U;
+        break;
       }
-      break;
-
-    default:
-      state = UART_STATE_SYNC0;
-      payload_len = 0U;
-      payload_idx = 0U;
-      break;
     }
   }
 }

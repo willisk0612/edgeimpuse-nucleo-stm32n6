@@ -45,17 +45,10 @@
 #include "timer_config.h"
 #endif
 
-#ifndef EI_INPUT_SCALE
-#define EI_INPUT_SCALE 0.03975987f
-#endif
-
-#ifndef EI_INPUT_ZP
-#define EI_INPUT_ZP    -4
-#endif
-
-
 extern UART_HandleTypeDef hlpuart1;
 static uint8_t received_data_buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
+static float g_input_scale = 1.0f;
+static float g_input_zeropoint = 0.0f;
 
 // Gets data for the classifier from the received data buffer
 static int received_feature_get_data(size_t offset, size_t length, float *out_ptr)
@@ -68,8 +61,7 @@ static int received_feature_get_data(size_t offset, size_t length, float *out_pt
   for (size_t i = 0; i < length; i++)
   {
     int8_t q = static_cast<int8_t>(received_data_buffer[offset + i]);
-    float x_norm = (static_cast<float>(q) - static_cast<float>(EI_INPUT_ZP)) * EI_INPUT_SCALE;
-    out_ptr[i] = x_norm;
+    out_ptr[i] = (static_cast<float>(q) - g_input_zeropoint) * g_input_scale;
   }
 
   return 0;
@@ -92,6 +84,23 @@ extern "C" int ei_main(void)
 
 extern "C" void ei_classify_callback(uint8_t *data, uint32_t size)
 {
+  const ei_impulse_t *impulse = ei_default_impulse.impulse;
+  if (impulse != nullptr && impulse->learning_blocks_size > 0 && impulse->learning_blocks != nullptr)
+  {
+    const ei_learning_block_t *first_block = &impulse->learning_blocks[0];
+    const ei_learning_block_config_tflite_graph_t *block_config =
+        static_cast<const ei_learning_block_config_tflite_graph_t *>(first_block->config);
+    if (block_config != nullptr && block_config->graph_config != nullptr)
+    {
+#if EI_CLASSIFIER_INFERENCING_ENGINE == EI_CLASSIFIER_ATON
+      const ei_config_aton_graph_t *graph_config =
+          static_cast<const ei_config_aton_graph_t *>(block_config->graph_config);
+      g_input_scale = graph_config->input_scale;
+      g_input_zeropoint = graph_config->input_zeropoint;
+#endif
+    }
+  }
+
   if (data == nullptr || size != EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE)
   {
     ei_printf("ERROR: Invalid data size (expected %d, got %lu)\n",
