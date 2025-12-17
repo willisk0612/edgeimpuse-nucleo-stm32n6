@@ -110,12 +110,6 @@ extern "C" void ei_classify_callback(uint8_t *data, uint32_t size)
     return;
   }
 
-  // Debug: echo first three quantized samples (signed int8) back to sender
-  int8_t qx = static_cast<int8_t>(data[0]);
-  int8_t qy = static_cast<int8_t>(data[1]);
-  int8_t qz = static_cast<int8_t>(data[2]);
-  ei_printf("Received q_x: %d, q_y: %d, q_z: %d\n", qx, qy, qz);
-
   memcpy(received_data_buffer, data, size);
 
   signal_t signal;
@@ -125,7 +119,11 @@ extern "C" void ei_classify_callback(uint8_t *data, uint32_t size)
   ei_impulse_result_t result = {nullptr};
 
   ei_printf("Running classifier...\n");
+  uint32_t start_cycles = DWT->CYCCNT;
   EI_IMPULSE_ERROR res = run_classifier(&signal, &result, false);
+  uint32_t end_cycles = DWT->CYCCNT;
+  uint32_t cycles = end_cycles - start_cycles;
+  float latency_ms = (float)cycles / (SystemCoreClock / 1000.0);
 
   if (res != 0)
   {
@@ -142,9 +140,10 @@ extern "C" void ei_classify_callback(uint8_t *data, uint32_t size)
   }
   float value = result.classification[0].value;
 
-  ei_printf("Regression output [%s]: %.3f\n", label, value);
+  ei_printf("Latency: %.3f ms\n", latency_ms);
+  ei_printf("Reconstruction error [%s]: %.3f\n", label, value);
 
   char response[64];
-  sprintf(response, "%s: %.3f\r\n", label, value);
+  sprintf(response, "Latency: %.3f ms\r\n%s: %.3f\r\n", latency_ms, label, value);
   printf("%s", response);
 }

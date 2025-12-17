@@ -199,6 +199,11 @@ int main(void)
   HAL_Init();
   system_init_post();
 
+  /* Enable DWT cycle counter for latency measurement */
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+  DWT->CYCCNT = 0;
+
   SCB_EnableICache();
 #if defined(USE_DCACHE)
   /* Power on DCACHE */
