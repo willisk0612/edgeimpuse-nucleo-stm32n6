@@ -38,7 +38,6 @@
 
 /* Include ----------------------------------------------------------------- */
 #include "edge-impulse-sdk/tensorflow/lite/kernels/custom/tree_ensemble_classifier.h"
-#include <math.h>
 #include "edge-impulse-sdk/classifier/ei_model_types.h"
 #include "edge-impulse-sdk/classifier/ei_run_dsp.h"
 #include "edge-impulse-sdk/porting/ei_logging.h"
@@ -227,13 +226,9 @@ EI_IMPULSE_ERROR run_nn_inference(
     }
     // copy rescale the input features to int8 and copy to input buffer
     size_t matrix_els = matrix->rows * matrix->cols;
-    const float inv_input_scale = 1.0f / graph_config->input_scale;
-    const float input_zp = (float)graph_config->input_zeropoint;
     for (size_t ix = 0; ix < matrix_els; ix++) {
-        int32_t q = (int32_t)lrintf((matrix->buffer[ix] * inv_input_scale) + input_zp);
-        if (q < -128) q = -128;
-        if (q > 127) q = 127;
-        nn_in[ix] = (int8_t)q;
+        //TODO: get scale and zero point from the model
+        nn_in[ix] = (int8_t)((matrix->buffer[ix] / graph_config->input_scale) + graph_config->input_zeropoint);
     }
 
     #ifdef USE_DCACHE
