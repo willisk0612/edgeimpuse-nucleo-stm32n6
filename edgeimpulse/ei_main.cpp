@@ -78,7 +78,7 @@ extern "C" int ei_main(void)
   {
     LED_BLUE_Blink();
     ProcessUartReception();
-    ei_sleep(10);
+    ei_sleep(9);
   }
 }
 
